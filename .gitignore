@@ -1,0 +1,12 @@
+.vscode/
+
+/data/
+/.kaggle/
+
+__pycache__/
+.pytest_cache/
+.venv/
+venv/
+
+runs/models/
+*.pt

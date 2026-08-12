@@ -1,0 +1,200 @@
+{
+  "recipe": "fair",
+  "groups": [
+    "light",
+    "medium",
+    "dark"
+  ],
+  "best_selection_score": 0.9581333333333334,
+  "config": {
+    "seed": 42,
+    "paths": {
+      "raw": "data/raw",
+      "processed": "data/pilot/processed",
+      "manifests": "data/pilot/manifests",
+      "runs": "runs/pilot"
+    },
+    "image": {
+      "size": 224,
+      "jpeg_quality": 95,
+      "mean": [
+        0.5,
+        0.5,
+        0.5
+      ],
+      "std": [
+        0.5,
+        0.5,
+        0.5
+      ]
+    },
+    "face": {
+      "detector": "haar",
+      "min_face": 64,
+      "margin": 0.3,
+      "require_face": true
+    },
+    "dedup": {
+      "enabled": true,
+      "hash_size": 8
+    },
+    "pilot": {
+      "target_per_label": 1000,
+      "tone_scheme": "coarse",
+      "coarse_categories": [
+        "light",
+        "medium",
+        "dark"
+      ],
+      "max_scan_per_dataset": 120000,
+      "report_name": "pilot_summary.md"
+    },
+    "datasets": [
+      {
+        "name": "deepdetect2025",
+        "kaggle": "ayushmandatta1/deepdetect-2025",
+        "has_faces": true,
+        "use_in_training": true,
+        "use_in_fairness": true,
+        "label_rules": [
+          {
+            "pattern": "fake",
+            "label": 1
+          },
+          {
+            "pattern": "ai",
+            "label": 1
+          },
+          {
+            "pattern": "real",
+            "label": 0
+          },
+          {
+            "pattern": "human",
+            "label": 0
+          }
+        ]
+      },
+      {
+        "name": "ai_vs_real",
+        "kaggle": "rhythmghai/ai-vs-real-images-dataset",
+        "has_faces": true,
+        "use_in_training": true,
+        "use_in_fairness": true,
+        "label_rules": [
+          {
+            "pattern": "fake",
+            "label": 1
+          },
+          {
+            "pattern": "ai",
+            "label": 1
+          },
+          {
+            "pattern": "real",
+            "label": 0
+          },
+          {
+            "pattern": "human",
+            "label": 0
+          }
+        ]
+      },
+      {
+        "name": "cifake",
+        "kaggle": "birdy654/cifake-real-and-ai-generated-synthetic-images",
+        "has_faces": false,
+        "use_in_training": false,
+        "use_in_fairness": false,
+        "role": "generalization",
+        "label_rules": [
+          {
+            "pattern": "fake",
+            "label": 1
+          },
+          {
+            "pattern": "real",
+            "label": 0
+          }
+        ]
+      }
+    ],
+    "splits": {
+      "train": 0.7,
+      "val": 0.15,
+      "test": 0.15,
+      "stratify_on": [
+        "dataset",
+        "label",
+        "skin_tone"
+      ]
+    },
+    "group": {
+      "key": "skin_tone",
+      "min_group_size": 25,
+      "skin_tone_categories": [
+        "light",
+        "medium",
+        "dark"
+      ]
+    },
+    "model": {
+      "backbone": "vit_small_patch16_224",
+      "pretrained": true,
+      "freq_branch": true,
+      "freq_dim": 128,
+      "embed_dim": 256,
+      "dropout": 0.1
+    },
+    "train": {
+      "epochs": 3,
+      "batch_size": 16,
+      "lr": 3e-05,
+      "weight_decay": 0.05,
+      "warmup_epochs": 1,
+      "grad_clip": 1.0,
+      "num_workers": 2,
+      "amp": "auto",
+      "balanced_sampler": true,
+      "early_stop_patience": 3,
+      "select_metric": "auc_minus_fprgap",
+      "threshold": 0.5
+    },
+    "loss": {
+      "type": "daw_fdd",
+      "dag_alpha": 0.5,
+      "daw_alpha_group": 0.5,
+      "daw_alpha_sample": 0.8
+    },
+    "adversarial": {
+      "enabled": true,
+      "weight": 0.2,
+      "grl_ramp_epochs": 2,
+      "head_hidden": 128
+    },
+    "fpr_penalty": {
+      "enabled": false,
+      "weight": 0.5
+    },
+    "recipes": {
+      "baseline": {
+        "loss.type": "bce",
+        "train.balanced_sampler": false,
+        "adversarial.enabled": false,
+        "fpr_penalty.enabled": false,
+        "train.select_metric": "auc"
+      },
+      "fair": {
+        "loss.type": "daw_fdd",
+        "train.balanced_sampler": true,
+        "adversarial.enabled": true,
+        "fpr_penalty.enabled": false,
+        "train.select_metric": "auc_minus_fprgap"
+      }
+    },
+    "eval": {
+      "bootstrap": 100,
+      "min_group_size": 25
+    }
+  }
+}

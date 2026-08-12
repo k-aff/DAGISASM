@@ -1,0 +1,141 @@
+# =====================================================================
+# PILOT configuration — 500 real + 500 fake, PEOPLE ONLY.
+#
+# End-to-end demo of the proposal's pipeline on a small subset:
+#   harvest -> split -> train baseline & fair (3 epochs) -> audit -> compare
+#
+# Deviations from the full plan are recorded in PILOT_NOTES.md.
+# Everything writes under data/pilot/* and runs/pilot/*.
+#
+#   python scripts/run_pilot.py --config config/pilot.yaml
+# =====================================================================
+
+seed: 42
+
+paths:
+  raw: data/raw                    # shared with the full run (read-only here)
+  processed: data/deepdetect/processed
+  manifests: data/deepdetect/manifests
+  runs: runs/deepdetect
+
+image:
+  size: 224
+  jpeg_quality: 95
+  mean: [0.5, 0.5, 0.5]
+  std:  [0.5, 0.5, 0.5]
+
+face:
+  detector: haar                   # haar | mtcnn | none — the "people only" gate
+  min_face: 64
+  margin: 0.30
+  require_face: true
+
+dedup:
+  enabled: true
+  hash_size: 8
+
+# ---------------------------------------------------------------------
+# PILOT SAMPLING — 500 per label, people only.
+# Phase 1 fills tone-balanced cells (target_per_label / 3 buckets each);
+# phase 2 tops up to target_per_label from whatever tones remain, so you
+# always reach 500/500 if the pool allows while staying as tone-balanced
+# as the data permits. Any residual tone imbalance is itself reported.
+# ---------------------------------------------------------------------
+pilot:
+  target_per_label: 3000
+  tone_scheme: coarse              # coarse (light/medium/dark) | fine (6 ITA cats)
+  coarse_categories: [light, medium, dark]
+  max_scan_per_dataset: 60000
+  report_name: pilot_summary.md
+
+datasets:
+  - name: deepdetect2025
+    kaggle: ayushmandatta1/deepdetect-2025
+    has_faces: true
+    use_in_training: true
+    use_in_fairness: true
+    # Files named real_N.* / fake_N.* -> token rules match the filename.
+    label_rules:
+      - {pattern: "fake",  label: 1}
+      - {pattern: "ai",    label: 1}
+      - {pattern: "real",  label: 0}
+      - {pattern: "human", label: 0}
+
+  # Excluded from the people-only pilot: CIFAR-10 objects, 32x32, no
+  # person class — the face gate would reject it wholesale (PILOT_NOTES #2).
+  - name: cifake
+    kaggle: birdy654/cifake-real-and-ai-generated-synthetic-images
+    has_faces: false
+    use_in_training: false
+    use_in_fairness: false
+    role: generalization
+    label_rules:
+      - {pattern: "fake", label: 1}
+      - {pattern: "real", label: 0}
+
+splits:
+  train: 0.70
+  val: 0.15
+  test: 0.15
+  stratify_on: [dataset, label, skin_tone]
+
+group:
+  key: skin_tone
+  min_group_size: 30               # pilot test split ~150 imgs -> ~50/tone
+  skin_tone_categories: [light, medium, dark]   # coarse buckets (pilot)
+
+model:
+  backbone: vit_small_patch16_224  # pilot-sized; full run uses vit_base (PILOT_NOTES #4)
+  pretrained: true
+  freq_branch: true
+  freq_dim: 128
+  embed_dim: 256
+  dropout: 0.1
+
+train:
+  epochs: 8                        # per your spec; raise for the full run
+  batch_size: 32
+  lr: 3.0e-5
+  weight_decay: 0.05
+  warmup_epochs: 1
+  grad_clip: 1.0
+  num_workers: 4
+  amp: false
+  balanced_sampler: false
+  early_stop_patience: 3
+  select_metric: auc
+  threshold: 0.5
+
+loss:
+  type: bce
+  dag_alpha: 0.5
+  daw_alpha_group: 0.5
+  daw_alpha_sample: 0.8
+
+adversarial:
+  enabled: false
+  weight: 0.2
+  grl_ramp_epochs: 2               # shortened to fit 3 epochs
+  head_hidden: 128
+
+fpr_penalty:
+  enabled: false
+  weight: 0.5
+
+recipes:
+  baseline:
+    loss.type: bce
+    train.balanced_sampler: false
+    adversarial.enabled: false
+    fpr_penalty.enabled: false
+    train.select_metric: auc
+  fair:
+    loss.type: daw_fdd
+    train.balanced_sampler: true
+    adversarial.enabled: true
+    fpr_penalty.enabled: false
+    train.select_metric: auc_minus_fprgap
+
+eval:
+  bootstrap: 100
+  min_group_size: 30

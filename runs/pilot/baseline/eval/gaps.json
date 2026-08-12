@@ -1,0 +1,38 @@
+{
+  "skin_tone": {
+    "fpr_gap": 0.020000000000000004,
+    "tpr_gap": 0.0980392156862745,
+    "auc_gap": 0.013835294117647057,
+    "equalized_odds_gap": 0.0980392156862745,
+    "demographic_parity_gap": 0.0548514851485149,
+    "worst_group_auc": 0.971764705882353,
+    "n_groups": 3,
+    "fpr_gap_ci": [
+      0.01394644290136094,
+      0.15493872549019602
+    ],
+    "auc_gap_ci": [
+      0.006176486530620524,
+      0.052447071889903815
+    ],
+    "n_boot": 100
+  },
+  "dataset": {
+    "fpr_gap": NaN,
+    "tpr_gap": NaN,
+    "auc_gap": NaN,
+    "equalized_odds_gap": NaN,
+    "demographic_parity_gap": NaN,
+    "worst_group_auc": 0.9823713646532438,
+    "n_groups": 1,
+    "fpr_gap_ci": [
+      NaN,
+      NaN
+    ],
+    "auc_gap_ci": [
+      NaN,
+      NaN
+    ],
+    "n_boot": 100
+  }
+}
