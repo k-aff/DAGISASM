@@ -146,7 +146,7 @@ def build_interface():
             "Upload a face image and the model will classify it as **real** "
             "or **AI-generated**, with a confidence score. Use the dropdown to "
             "compare different model architectures on the same image.\n\n"
-            f"_device: {_STATE['device']}_"
+            # f"_device: {_STATE['device']}_"
         )
         with gr.Row():
             with gr.Column():
@@ -154,7 +154,7 @@ def build_interface():
                     choices=choices, value=default, label="Model architecture",
                     info="Switch architectures and re-run on the same image",
                 )
-                inp = gr.Image(type="pil", label="Upload a face image", height=320)
+                inp = gr.Image(type="pil", label="", height=320)
                 btn = gr.Button("Analyse", variant="primary")
             with gr.Column():
                 verdict = gr.Markdown()
