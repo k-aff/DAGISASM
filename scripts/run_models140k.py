@@ -57,16 +57,64 @@ MODELS = {
 PRETTY = {"vit": "ViT-Small", "xception": "Xception", "swin": "Swin-Tiny"}
 
 
+def _cfg_get(cfg, path: str, default):
+    """Safe nested config lookup: _cfg_get(cfg, 'paths.manifest_file', 'manifest.csv')."""
+    node = cfg
+    for part in path.split("."):
+        try:
+            node = node[part] if isinstance(node, dict) else getattr(node, part)
+        except (KeyError, AttributeError, TypeError):
+            return default
+        if node is None:
+            return default
+    return node
+
+
 def _load_split(cfg) -> pd.DataFrame:
-    path = Path(cfg.paths.manifests) / "manifest.csv"
+    # Which manifest to train from. Defaults to manifest.csv so older configs
+    # behave exactly as before; the augmented run sets manifest_file.
+    name = str(_cfg_get(cfg, "paths.manifest_file", "manifest.csv"))
+    path = Path(cfg.paths.manifests) / name
     if not path.exists():
         raise SystemExit(
             f"{path} missing. Run the shared harvest+split first:\n"
             "  python scripts/run_pilot.py --config config/model_vit.yaml "
             "--stage harvest,split"
         )
-    df = pd.read_csv(path)
-    return df[df["status"] == "ok"]
+    df = pd.read_csv(path, low_memory=False)
+
+    # `status` comes from the harvester. Manifests built by
+    # build_augmented_140k.py have no such column - every row is usable.
+    if "status" in df.columns:
+        df = df[df["status"] == "ok"]
+
+    if "split" not in df.columns:
+        raise SystemExit(f"{path} has no 'split' column.")
+
+    # Leakage guard: augmented copies carry source_id pointing at their
+    # original. No source image may appear in more than one split.
+    if "source_id" in df.columns:
+        spread = df.groupby("source_id")["split"].nunique()
+        leaked = spread[spread > 1]
+        if len(leaked):
+            raise SystemExit(
+                f"{len(leaked)} source images span multiple splits "
+                f"(e.g. {list(leaked.index[:3])}). Training would be invalid."
+            )
+        log.info("Leakage check passed: %d unique sources across %d rows",
+                 df["source_id"].nunique(), len(df))
+
+    if "is_augmented" in df.columns:
+        outside = int(df.loc[df["split"] != "train", "is_augmented"].sum())
+        if outside:
+            raise SystemExit(
+                f"{outside} augmented rows outside the train split. "
+                "Val and test must be originals only."
+            )
+        log.info("Augmented rows: %d (train only)", int(df["is_augmented"].sum()))
+
+    log.info("Manifest %s -> %d rows", path, len(df))
+    return df
 
 
 def train_one(key: str, recipe: str, device: str) -> None:
@@ -194,7 +242,18 @@ def main() -> None:
     ap.add_argument("--compare", action="store_true", help="Build the comparison table")
     ap.add_argument("--recipe", default="baseline", help="baseline | fair")
     ap.add_argument("--device", default=None, choices=[None, "cpu", "cuda"])
+    ap.add_argument("--config", default=None,
+                    help="Override the config file for this run "
+                         "(e.g. config/model140k_swin_aug.yaml)")
     args = ap.parse_args()
+
+    if args.config:
+        if not Path(args.config).exists():
+            raise SystemExit(f"--config {args.config} not found")
+        targets = [args.train] if args.train else list(MODELS)
+        for k in targets:
+            MODELS[k] = args.config
+        log.info("Config override -> %s for: %s", args.config, ", ".join(targets))
     device = resolve_device(args.device)
 
     if args.train:
