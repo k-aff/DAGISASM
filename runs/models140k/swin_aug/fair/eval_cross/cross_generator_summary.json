@@ -1,0 +1,79 @@
+{
+  "checkpoint": "runs\\models140k\\swin_aug\\fair\\best.pt",
+  "threshold": 0.5,
+  "group_col": "race",
+  "within_source": {
+    "imdb": {
+      "n": 6499,
+      "n_identities": 1473,
+      "metric": "FPR",
+      "overall_rate": 0.2943529773811356,
+      "per_group": [
+        {
+          "group": "Black",
+          "n": 1457,
+          "n_identities": 687,
+          "metric": "FPR",
+          "rate": 0.2868908716540837,
+          "ci_lo": 0.2655971173644475,
+          "ci_hi": 0.3095401509951956
+        },
+        {
+          "group": "Indian",
+          "n": 197,
+          "n_identities": 149,
+          "metric": "FPR",
+          "rate": 0.3604060913705584,
+          "ci_lo": 0.29441624365482233,
+          "ci_hi": 0.43147208121827413
+        },
+        {
+          "group": "White",
+          "n": 4845,
+          "n_identities": 1289,
+          "metric": "FPR",
+          "rate": 0.29391124871001034,
+          "ci_lo": 0.2809029927760578,
+          "ci_hi": 0.3067079463364293
+        }
+      ],
+      "gap": 0.07351521971647468
+    },
+    "sd_wiki": {
+      "n": 14177,
+      "n_identities": 14177,
+      "metric": "FNR",
+      "overall_rate": 0.5318473583974043,
+      "per_group": [
+        {
+          "group": "Black",
+          "n": 1709,
+          "n_identities": 1709,
+          "metric": "FNR",
+          "rate": 0.6746635459332944,
+          "ci_lo": 0.652428320655354,
+          "ci_hi": 0.6968987712112347
+        },
+        {
+          "group": "Indian",
+          "n": 891,
+          "n_identities": 891,
+          "metric": "FNR",
+          "rate": 0.4152637485970819,
+          "ci_lo": 0.38159371492704824,
+          "ci_hi": 0.4478114478114478
+        },
+        {
+          "group": "White",
+          "n": 11577,
+          "n_identities": 11577,
+          "metric": "FNR",
+          "rate": 0.5197374103826553,
+          "ci_lo": 0.5104085687138291,
+          "ci_hi": 0.5287207393970804
+        }
+      ],
+      "gap": 0.25939979733621243
+    }
+  }
+}
