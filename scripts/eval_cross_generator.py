@@ -1,47 +1,24 @@
 #!/usr/bin/env python3
-r"""Cross-generator evaluation: score held-out sources with a trained detector.
+r"""Score a trained detector on the cross-source/cross-generator test.
 
-RQ2. The model was trained only on 140k (FFHQ reals vs StyleGAN fakes). This
-scores it on sources it has never seen:
+The test sources come from AI-Face and were never used in training:
 
-    imdb     real celebrity photos   (all label 0)
-    sd_wiki  Stable Diffusion faces  (all label 1)
+    imdb     IMDb-WIKI real faces      (all label 0) -> per-race FPR
+    sd_wiki  Stable Diffusion fakes    (all label 1) -> per-race FNR
 
-Neither was in training, so nothing here needs retraining -- inference only.
+Each source holds one label, so the error rate is computed within each source
+and races are compared only inside a source. The combined/ folder pools both
+sources; its AUC is not meaningful because the source alone predicts the label,
+and its accuracy depends on the 6 499 real / 14 177 fake mix of this set.
 
-TWO VIEWS, AND THE DIFFERENCE MATTERS
--------------------------------------
-1. WITHIN-SOURCE (the clean one).
-   Each source carries a single label, so AUC is undefined and the metric is
-   an error rate:
-       imdb    -> per-race FPR: real faces wrongly called fake
-       sd_wiki -> per-race FNR: fakes missed
-   Races are directly comparable inside a source. Comparing imdb's FPR to
-   sd_wiki's FNR is NOT meaningful -- different sources, different task.
+IMDb-WIKI has many photos of the same celebrity, so --cap-per-identity keeps
+at most N images per IMDb person ID (5 in the report).
 
-2. COMBINED (AUC view, caveat attached).
-   Pooling both sources gives two classes, so AUC works. The absolute AUC is
-   inflated because source predicts label perfectly -- a model could separate
-   them on JPEG signature alone. But the GAP BETWEEN RACES stays interpretable:
-   every race has the same source structure (all its reals from imdb, all its
-   fakes from sd_wiki), so the confound is uniform across groups and cancels
-   in the comparison. Report the gap, not the absolute number.
-
-IDENTITY DUPLICATION
---------------------
-IMDB-WIKI is celebrity-sourced: many images per person. Without a cap, a few
-heavily-photographed actors dominate their race group and the "per-image"
-error rate really measures those few faces. --cap-per-identity limits this.
-
-USAGE
------
-  python scripts\eval_cross_generator.py ^
-      --checkpoint runs\models140k\swin_aug\baseline\best.pt ^
-      --manifest data\faces140k\manifests\pool_merged.csv ^
-      --out runs\models140k\swin_aug\baseline\eval_cross
-
-  # keep at most 5 images per celebrity
-  ... --cap-per-identity 5
+    python scripts/eval_cross_generator.py \
+        --checkpoint runs/models140k/swin_aug/baseline/best.pt \
+        --manifest data/faces140k/manifests/pool_merged.csv \
+        --out runs/models140k/swin_aug/baseline/eval_cross \
+        --cap-per-identity 5
 """
 from __future__ import annotations
 
@@ -82,10 +59,10 @@ IDENTITY_RE = re.compile(r"(nm\d{5,})")
 
 
 def add_identity(df: pd.DataFrame, pattern: re.Pattern) -> pd.DataFrame:
-    """Recover the person ID from IMDB-WIKI style paths (…/nm0000123_…)."""
+    """Read the IMDb person ID from paths such as .../nm0000123_rm..._face1.jpg."""
     out = df.copy()
     out["identity"] = out["path"].astype(str).str.extract(pattern, expand=False)
-    # rows with no match get their own filename as a unique identity
+    # rows without an ID (the Stable Diffusion images) count as their own identity
     missing = out["identity"].isna()
     out.loc[missing, "identity"] = out.loc[missing, "path"].astype(str)
     return out
@@ -102,7 +79,7 @@ def cap_identities(df: pd.DataFrame, cap: int, seed: int) -> pd.DataFrame:
 
 
 def score(df: pd.DataFrame, model, rcfg, vocab, run_dir: Path, device: str) -> pd.DataFrame:
-    """Run inference. Mirrors eval_one() in run_models140k.py."""
+    """Run inference in the same way as eval_one() in run_models140k.py."""
     df = df.reset_index(drop=True)
     trainer = Trainer(rcfg, model, vocab, run_dir, device)
     preds = trainer.predict(make_loader(df, rcfg, vocab, False))
@@ -123,7 +100,6 @@ def error_rate_table(
         pred = (part["score"].to_numpy() >= threshold).astype(int)
         wrong = (pred != y).astype(float)
 
-        # name the error for what it is, given the label present
         labels = set(np.unique(y).tolist())
         kind = "FPR" if labels == {0} else "FNR" if labels == {1} else "error"
 
@@ -169,7 +145,6 @@ def main() -> None:
     device = resolve_device(args.device)
     out_root = ensure_dir(args.out)
 
-    # ---- model ------------------------------------------------------------
     ckpt_path = Path(args.checkpoint)
     if not ckpt_path.exists():
         sys.exit(f"ERROR: checkpoint not found: {ckpt_path}")
@@ -181,7 +156,6 @@ def main() -> None:
     threshold = args.threshold if args.threshold is not None else float(rcfg.train.threshold)
     log.info("Loaded %s | groups=%s | threshold=%.2f", ckpt_path, vocab, threshold)
 
-    # ---- data -------------------------------------------------------------
     df = pd.read_csv(args.manifest, low_memory=False)
     if "source" not in df.columns:
         sys.exit(f"ERROR: manifest has no 'source' column. Columns: {list(df.columns)}")
@@ -192,8 +166,7 @@ def main() -> None:
     if group_col not in df.columns:
         sys.exit(f"ERROR: group column '{group_col}' not in manifest.")
 
-    # the model's loader reads cfg.group.key (skin_tone); make sure it holds
-    # the same values the checkpoint's vocab was built from
+    # the loader groups by cfg.group.key (skin_tone), so copy the race labels into it
     df["skin_tone"] = df[group_col]
 
     races = [r.strip() for r in args.races.split(",")]
@@ -207,7 +180,6 @@ def main() -> None:
                      "group_col": group_col, "within_source": {}}
     combined_parts = []
 
-    # ---- within-source, one report each ------------------------------------
     for src in [s.strip() for s in args.sources.split(",")]:
         part = df[df["source"] == src].copy()
         if part.empty:
@@ -249,7 +221,7 @@ def main() -> None:
         print(tbl.to_string(index=False, float_format=lambda v: f"{v:.4f}"))
         print(f"gap (max-min): {spread:.4f}")
 
-    # ---- combined: AUC view -------------------------------------------------
+    # pooled view over both sources (descriptive only, see module docstring)
     if len(combined_parts) >= 2:
         comb = pd.concat(combined_parts, ignore_index=True)
         if comb["label"].nunique() >= 2:
@@ -257,12 +229,9 @@ def main() -> None:
             generate_report(
                 comb, cdir, group_cols=["skin_tone"], threshold=threshold,
                 min_group_size=30, n_boot=args.n_boot, seed=args.seed,
-                title="Cross-generator (imdb reals + sd_wiki fakes) — AUC view",
+                title="Cross-source/cross-generator test, both sources pooled",
             )
-            print(f"\n{'=' * 70}\ncombined AUC view -> {cdir}\n{'=' * 70}")
-            print("NOTE: absolute AUC here is inflated -- source predicts label.")
-            print("      The per-race GAP is the interpretable number, because")
-            print("      every race has the same source structure.")
+            log.info("Pooled view -> %s", cdir)
 
     save_json(summary, out_root / "cross_generator_summary.json")
     log.info("Wrote %s", out_root / "cross_generator_summary.json")

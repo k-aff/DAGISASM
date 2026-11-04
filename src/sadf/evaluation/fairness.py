@@ -1,4 +1,4 @@
-
+"""Per-group metric tables, max-minus-min gaps and bootstrap intervals for the gaps."""
 from __future__ import annotations
 
 import numpy as np
@@ -15,7 +15,7 @@ def per_group_table(
     threshold: float = 0.5,
     min_n: int = 30,
 ) -> pd.DataFrame:
-   
+    """One row of binary metrics per group; small_n marks groups below min_n."""
     rows = []
     for group, sub in df.groupby(group_col):
         if str(group) in EXCLUDED_GROUPS:

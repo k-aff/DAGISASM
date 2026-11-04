@@ -1,0 +1,105 @@
+% =====================================================================
+%  Figure 1: the steps of the study (TikZ)
+%
+%  Use inside a figure environment:
+%      \begin{figure}[htbp]
+%      \centering
+%      \input{Figures/fig_pipeline}
+%      \caption{...}\label{fig:pipeline}
+%      \end{figure}
+%
+%  Needs in the preamble:
+%      \usepackage{tikz}
+%      \usetikzlibrary{positioning,fit,backgrounds,arrows.meta,calc}
+%
+%  Layout: three rows. The flow snakes through the rows (left to right,
+%  right to left, left to right) so that every arrow is short, and each
+%  step carries a number in the order it was carried out.
+%  Colours follow the poster's four stages: light blue = prepare,
+%  pink = balance, magenta = train, teal = test.
+%  Canvas is about 15.2 cm wide, a little wider than the 13.7 cm text
+%  width, so the picture is centred in a box of text width and reaches
+%  about 0.75 cm into each margin.
+% =====================================================================
+\definecolor{plnavy}{HTML}{112D52}
+\definecolor{plblue}{HTML}{77B2FB}
+\definecolor{plpink}{HTML}{FDBBDE}
+\definecolor{plmag}{HTML}{CC2CAA}
+\definecolor{plteal}{HTML}{2B9288}
+\definecolor{plinktwo}{HTML}{52514E}
+\begingroup\linespread{1}\selectfont
+% box height
+\def\plh{1.8cm}
+% one step: name, fill colour, text colour, x, y, number, title, detail
+% (the title sits at the same height in every box, the detail below it)
+\newcommand{\plstep}[8]{%
+  \node[plbox=#2] (#1) at (#4,#5) {};
+  \begin{pgfonlayer}{background}
+    \fill[black, opacity=0.13, rounded corners=8pt]
+      ($(#1.south west)+(0.05,-0.06)$) rectangle ($(#1.north east)+(0.05,-0.06)$);
+  \end{pgfonlayer}
+  \node[pltext, font=\scriptsize\bfseries, text=#3] (#1t) at ([yshift=-8pt]#1.north) {#7};
+  \node[pltext, text=#3, opacity=0.88] at ([yshift=-3pt]#1t.south) {#8};
+  \node[plbadge] (#1n) at ([shift={(0.04,-0.04)}]#1.north west) {#6};}
+% one entry of the key: colour, x, label
+\newcommand{\plkey}[3]{%
+  \node[anchor=west, inner sep=0pt, text=plnavy] at (#2,1.8)
+    {\tikz[baseline=-0.6ex]\fill[#1, rounded corners=1.2pt] (0,-0.1) rectangle (0.32,0.1);\ #3};}
+\makebox[\textwidth][c]{%
+\begin{tikzpicture}[
+    font=\scriptsize,
+    plbox/.style={fill=#1, draw=none, rounded corners=8pt,
+                  minimum width=3.4cm, minimum height=\plh, inner sep=0pt},
+    plbadge/.style={circle, fill=plnavy, draw=white, line width=0.9pt, text=white,
+                    font=\tiny\bfseries, inner sep=0pt, minimum size=3.9mm},
+    pltext/.style={anchor=north, text width=3.2cm, align=flush center, inner sep=0pt},
+    flow/.style={-{Stealth[length=1.9mm, width=1.6mm]}, line width=0.8pt, draw=plnavy!75,
+                 rounded corners=3pt},
+  ]
+  % column centres (boxes 3.4 cm wide, 0.45 cm apart) and row centres
+  \def\xa{1.7}\def\xb{5.55}\def\xc{9.4}\def\xd{13.25}
+  \def\ya{0}\def\yb{-2.6}\def\yc{-5.6}
+
+  % ---- key ------------------------------------------------------------
+  \plkey{plblue}{0}{Prepare}
+  \plkey{plpink}{2.0}{Balance}
+  \plkey{plmag}{3.95}{Train}
+  \plkey{plteal}{5.65}{Test}
+
+  % ---- row 1: prepare the data (left to right) ------------------------
+  \plstep{a1}{plblue}{plnavy}{\xa}{\ya}{1}{140k corpus}{70\,000 FFHQ real and 70\,000 StyleGAN fake}
+  \plstep{a2}{plblue}{plnavy}{\xb}{\ya}{2}{Face crop}{Haar detector, 30\% margin, $224\times224$ pixels}
+  \plstep{a3}{plblue}{plnavy}{\xc}{\ya}{3}{Remove duplicates}{perceptual hash of each crop}
+  \plstep{a4}{plblue}{plnavy}{\xd}{\ya}{4}{Race labels}{FairFace, 7 groups merged into 4}
+  % the skin-tone method, tried first and dropped
+  \node[draw=plnavy!45, dashed, line width=0.6pt, rounded corners=5pt, fill=white, text width=4.45cm,
+        minimum width=4.6cm, align=flush center, inner sep=2.5pt, text=plnavy,
+        anchor=east] (ita) at ($(a4.east |- 0,1.8)$)
+    {{\bfseries First attempt: ITA skin tone}\\\textcolor{plinktwo}{dropped, see Section~\ref{sec:ita}}};
+  \draw[plnavy!45, dashed, line width=0.7pt] (ita.south -| a4.north) -- (a4.north);
+
+  % ---- row 2: balance the data and train (right to left) -------------
+  \plstep{b1}{plpink}{plnavy}{\xd}{\yb}{5}{Working set}{18\,112 distinct Black, Indian and White faces}
+  \plstep{b2}{plpink}{plnavy}{\xc}{\yb}{6}{Split first}{train 13\,912, validation 1\,800, test 2\,400}
+  \plstep{b3}{plpink}{plnavy}{\xb}{\yb}{7}{Augment training}{copies bring every cell to 4\,000: 24\,000 training images}
+  \plstep{b4}{plmag}{white}{\xa}{\yb}{8}{Train two models}{baseline and fairness-aware, same architecture}
+
+  % ---- row 3: test (left to right) ------------------------------------
+  \plstep{c1}{plteal}{white}{\xa}{\yc}{9}{In-distribution test}{2\,400 held-out images, real and fake}
+  \plstep{c2}{plteal}{white}{\xb}{\yc}{10}{Cross-source/\\cross-generator test}{6\,499 IMDb real, 14\,177 Stable Diffusion fake}
+  \plstep{c3}{plteal}{white}{\xc}{\yc}{11}{Results per group}{FPR, FNR, AUC and accuracy for each race}
+  \plstep{c4}{plteal}{white}{\xd}{\yc}{12}{Gaps and intervals}{highest minus lowest group, bootstrap 95\% intervals}
+  \begin{pgfonlayer}{background}
+    \node[fit={($(c1.north west)+(-0.24,0.24)$) ($(c2.south east)+(0.14,-0.16)$)}, inner sep=0pt,
+          rounded corners=7pt, fill=plteal!14] (tests) {};
+  \end{pgfonlayer}
+
+  % ---- arrows ---------------------------------------------------------
+  \foreach \p/\q in {a1/a2, a2/a3, a3/a4, b1/b2, b2/b3, b3/b4, c3/c4}
+    \draw[flow] (\p) -- (\q);
+  \draw[flow] (a4.south) -- (b1.north);
+  \draw[flow] (b4.south) -- (b4.south |- tests.north)
+    node[midway, right=2pt, font=\scriptsize\itshape, text=plnavy] {both models on both tests};
+  \draw[flow] (tests.east |- c3.west) -- (c3.west);
+\end{tikzpicture}}
+\endgroup

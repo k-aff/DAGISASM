@@ -1,28 +1,25 @@
 #!/usr/bin/env python3
-r"""All figures for the COS700 report, in one script.
+r"""Chart figures for the COS700 report.
 
-    python figures.py                 # make every figure
-    python figures.py contrast forest # make only some
+    python figures.py                  # every figure
+    python figures.py contrast forest  # only some
 
-Writes PDF (for LaTeX) and PNG (for slides) into ./figures/. In report.tex
-each figure is included as  \includegraphics[width=\textwidth]{figures/<name>.pdf}
+Writes a PDF and a PNG of each figure to ./figures/. Report figure numbers:
 
-    ita          extra     ITA categories and the effect of lighting (Figures/fig_ita.pdf)
-    cvar         extra     average loss versus CVaR, simulated (Figures/fig_cvar.pdf)
-    composition  Figure 1  racial make-up of the 140k corpus
-    arch         Figure 2  the multimodal detector
-    evaldesign   Figure 3  the two test conditions
-    contrast     Figure 4  FPR by race, familiar vs new generator
-    forest       Figure 5  fairness gaps, baseline vs fairness-aware
-    confusion    Figure 6  cross-generator confusion matrices
+    ita          Figure 2  ITA categories and the effect of lighting
+    composition  Figure 3  racial make-up of the 140k corpus
+    cvar         Figure 5  average loss versus CVaR (simulated losses)
+    contrast     Figure 7  FPR by race under the two test conditions
+    forest       Figure 8  gaps between groups, baseline vs fairness-aware
+    confusion    Figure 9  cross-source/cross-generator confusion matrices
 
-Only needs numpy and matplotlib (no SciPy).
+Figures 1, 4 and 6 are TikZ drawings; their sources are in figures/tikz/.
 
-All numbers are in the DATA section below. They are the results from the
-report's tables, stored as counts (errors out of n) so every rate can be
-recomputed. Where the report gives a confidence interval it is used as is;
-the remaining intervals (in-distribution rates and the gaps in Figure 5)
-are bootstrapped here from the counts with 2,000 resamples.
+The DATA section holds the results as counts (errors out of n), copied from
+runs/models140k/swin_aug/*/eval/ and */eval_cross/. Where the report gives a
+confidence interval it is used as is; the other intervals (in-distribution
+rates and the gaps in Figure 8) are bootstrapped from the counts with 2 000
+resamples.
 """
 from __future__ import annotations
 
@@ -34,7 +31,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 from matplotlib.colors import LinearSegmentedColormap  # noqa: E402
-from matplotlib.patches import FancyArrowPatch, FancyBboxPatch, PathPatch, Rectangle  # noqa: E402
+from matplotlib.patches import PathPatch, Rectangle  # noqa: E402
 from matplotlib.path import Path as MPath  # noqa: E402
 
 OUT = Path("figures")
@@ -43,16 +40,16 @@ RACES = ["Black", "Indian", "White"]
 # =============================================================================
 # DATA
 # =============================================================================
-# FairFace labels over all 140,000 images (Table 2)
+# FairFace labels over all 140 000 images
 COMPOSITION = {"White": 88496, "Other": 41165, "Black": 5975, "Indian": 4364}
 CORPUS_TOTAL = 140000
 
-# In-distribution test: 400 real + 400 fake per race (Table 3)
+# in-distribution test, baseline: 400 real + 400 fake per race
 INDIST_FP = {"Black": (0, 400), "Indian": (0, 400), "White": (2, 400)}   # FPR
 INDIST_FN = {"Black": (2, 400), "Indian": (1, 400), "White": (3, 400)}   # FNR
 
-# Cross-generator test (Tables 4 and 5): (errors, n)
-#   IMDb = real faces only -> false positives; SD = fake faces only -> misses
+# cross-source/cross-generator test: (errors, n)
+#   IMDb holds real faces only (false positives), SD fake faces only (misses)
 CROSS = {
     "baseline": {
         "fp": {"Black": (620, 1457), "Indian": (109, 197), "White": (1757, 4845)},
@@ -63,14 +60,14 @@ CROSS = {
         "fn": {"Black": (1153, 1709), "Indian": (370, 891), "White": (6017, 11577)},
     },
 }
-# 95% CIs reported in Table 4 (baseline, cross-generator FPR)
+# 95% intervals of the baseline IMDb FPR, from eval_cross/imdb/per_group_error.csv
 CROSS_FPR_CI_REPORTED = {"Black": (0.401, 0.449), "Indian": (0.482, 0.619),
                          "White": (0.349, 0.377)}
 
 N_BOOT, SEED = 2000, 0
 
 # =============================================================================
-# STYLE (dataviz reference palette, light mode, print)
+# STYLE
 # =============================================================================
 SURFACE = "#ffffff"
 INK, INK2, MUTED = "#0b0b0b", "#52514e", "#898781"
@@ -79,9 +76,9 @@ BLUE, PURPLE = "#77b2fb", "#815F9D"          # categorical slots 1 and 2
 GREY_BAR = "#c3c2b7"                         # "left out" / reference
 PURPLE_RAMP = ["#ffffff", "#e5d9f8", "#cbb5ef", "#b290e4", "#9b69da",
                "#8d5acb", "#7d4fb5", "#6e43a2", "#5f398d"]
-TINT = {"neutral": "#cea2e2", "blue": "#e6f0fc", "PURPLE": "#fdeee7"}
+TINT = {"neutral": "#cea2e2"}                # correct cells in Figure 9
 
-WIDTH = 5.4                                  # inches = \textwidth in the template
+WIDTH = 5.4                                  # inches, the text width of the report
 
 plt.rcParams.update({
     "font.family": "serif", "font.serif": ["cmr10"],
@@ -97,11 +94,6 @@ plt.rcParams.update({
 def num(n: int) -> str:
     """88496 -> 88 496 with a thin space, as in the report."""
     return "$" + f"{n:,}".replace(",", r"\,") + "$"
-
-
-def n_eq(n: int) -> str:
-    """'n = 6 499' typeset as one maths expression."""
-    return "$n = " + f"{n:,}".replace(",", r"\,") + "$"
 
 
 def pct(x: float, d: int = 0) -> str:
@@ -173,47 +165,8 @@ def save(fig, name):
     print(f"  wrote {OUT / name}.pdf / .png")
 
 
-# --- diagram helpers ---------------------------------------------------------
-def canvas(h_in):
-    fig = plt.figure(figsize=(WIDTH, h_in))
-    ax = fig.add_axes([0, 0, 1, 1])
-    ax.set_xlim(0, 100)
-    ax.set_ylim(0, 100 * h_in / WIDTH)
-    ax.set_aspect("equal")
-    ax.axis("off")
-    return fig, ax
-
-
-def box(ax, x, y, w, h, title, sub=None, fc=TINT["neutral"], dashed=False):
-    ax.add_patch(FancyBboxPatch((x, y), w, h, boxstyle="round,pad=0,rounding_size=1.4",
-                                fc=fc, ec=INK2, lw=0.8, ls=(0, (3, 2)) if dashed else "-",
-                                zorder=2))
-    cy = y + h / 2
-    if sub:
-        ax.text(x + w / 2, cy + 1.5, title, ha="center", va="bottom", fontsize=9.5,
-                color=INK, zorder=3)
-        ax.text(x + w / 2, cy + 0.6, sub, ha="center", va="top", fontsize=7.5,
-                color=INK2, zorder=3, linespacing=1.25)
-    else:
-        ax.text(x + w / 2, cy, title, ha="center", va="center", fontsize=9.5,
-                color=INK, zorder=3)
-    return (x, y, w, h)
-
-
-def arrow(ax, p, q, dashed=False):
-    ax.add_patch(FancyArrowPatch(p, q, arrowstyle="-|>", mutation_scale=8, lw=0.9,
-                                 color=INK2, shrinkA=0, shrinkB=0, zorder=1,
-                                 ls=(0, (3, 2)) if dashed else "-"))
-
-
-def right(b):  return (b[0] + b[2], b[1] + b[3] / 2)
-def left(b):   return (b[0], b[1] + b[3] / 2)
-def top(b):    return (b[0] + b[2] / 2, b[1] + b[3])
-def bottom(b): return (b[0] + b[2] / 2, b[1])
-
-
 # =============================================================================
-# Figure 1: corpus composition
+# Figure 3: corpus composition
 # =============================================================================
 def fig_composition():
     groups = list(COMPOSITION)
@@ -232,15 +185,10 @@ def fig_composition():
         ax.text(n + 1200, i, f"{num(n)}  ({pct(n / CORPUS_TOTAL, 1)})",
                 va="center", ha="left", color=INK, fontsize=11, zorder=4)
 
-    ind = COMPOSITION["Indian"]
-    ax.axvline(ind, color=INK2, lw=0.8, zorder=2)
-    ax.text(ind + 1200, -0.68, f"",
-            va="center", ha="left", color=INK2, fontsize=10, zorder=4,
-            bbox=dict(fc=SURFACE, ec="none", pad=1.5))
+    ax.axvline(COMPOSITION["Indian"], color=INK2, lw=0.8, zorder=2)
 
     ax.set_yticks(range(len(groups)))
-    ax.set_yticklabels([g if g in used else f"{g}" for g in groups],
-                       color=INK2, fontsize=11)
+    ax.set_yticklabels(groups, color=INK2, fontsize=11)
     ax.set_xticks([0, 20000, 40000, 60000, 80000])
     ax.set_xticklabels(["0", "20K", "40K", "60K", "80K"])
     style_axes(ax, grid_axis="x")
@@ -253,72 +201,7 @@ def fig_composition():
 
 
 # =============================================================================
-# Figure 2: architecture
-# =============================================================================
-def fig_arch():
-    fig, ax = canvas(2.6)
-
-    rgb = box(ax, 1, 30, 18, 12, "Face crop", r"RGB, $224 \times 224$", fc=SURFACE)
-    fft = box(ax, 1, 7, 18, 12, "Spectrum", "greyscale, 2D FFT,\n" r"$\log(1+|\mathcal{F}|)$",
-              fc=SURFACE)
-    swin = box(ax, 24, 30, 23, 12, "Swin-Tiny", "pretrained on ImageNet,\nfine-tuned")
-    cnn = box(ax, 24, 7, 23, 12, "Small CNN", "trained from scratch")
-    fuse = box(ax, 53, 18.5, 20, 12, "Fusion", "concatenate,\n256-d embedding")
-    head = box(ax, 79, 18.5, 20, 12, "Forgery head", "linear + sigmoid,\nfake if $p \\geq 0.5$")
-    adv = box(ax, 53, 0.8, 20, 11, "Race adversary", "gradient reversal,\nfair recipe only",
-              fc=SURFACE, dashed=True)
-
-    ax.text(1, 43.2, "Image stream", fontsize=8.5, color=MUTED, va="bottom")
-    ax.text(1, 5.8, "Frequency stream", fontsize=8.5, color=MUTED, va="top")
-
-    arrow(ax, bottom(rgb), top(fft))
-    arrow(ax, right(rgb), left(swin))
-    arrow(ax, right(fft), left(cnn))
-    arrow(ax, right(swin), (fuse[0], fuse[1] + fuse[3] * 0.75))
-    arrow(ax, right(cnn), (fuse[0], fuse[1] + fuse[3] * 0.25))
-    arrow(ax, right(fuse), left(head))
-    arrow(ax, bottom(fuse), top(adv), dashed=True)
-    save(fig, "fig_arch")
-
-
-# =============================================================================
-# Figure 3: evaluation design
-# =============================================================================
-def fig_evaldesign():
-    fig, ax = canvas(2.55)
-    H = 100 * 2.55 / WIDTH                        # ~47
-
-    model = box(ax, 31, H - 10.5, 38, 9.5, "Trained detector",
-                "FFHQ real + StyleGAN fake")
-
-    ind = box(ax, 1, 10, 30, 21, "In-distribution test",
-              "FFHQ real + StyleGAN fake,\n" + num(2400) + " images, both labels",
-              fc=TINT["blue"])
-
-    # container for the two unseen sources
-    cx, cy, cw, chh = 37, 10, 62, 21
-    ax.add_patch(FancyBboxPatch((cx, cy), cw, chh, boxstyle="round,pad=0,rounding_size=1.4",
-                                fc=TINT["PURPLE"], ec=INK2, lw=0.8, zorder=1))
-    ax.text(cx + cw / 2, cy + chh - 1.6, "Cross-generator test (unseen sources)",
-            ha="center", va="top", fontsize=9.5, color=INK, zorder=3)
-    imdb = box(ax, cx + 2, cy + 2, 28, 13, "IMDb real faces",
-               "real only, " + n_eq(6499) + ",\ngives FPR", fc=SURFACE)
-    sd = box(ax, cx + 32, cy + 2, 28, 13, "Stable Diffusion fakes",
-             "fake only, " + n_eq(14177) + ",\ngives FNR", fc=SURFACE)
-
-    arrow(ax, (model[0] + 5, model[1]), top(ind))
-    arrow(ax, (model[0] + model[2] - 5, model[1]), (cx + cw / 2, cy + chh))
-
-    ax.text(ind[0] + ind[2] / 2, 8, "All metrics: accuracy, AUC,\nFPR, FNR and their gaps",
-            ha="center", va="top", fontsize=8.5, color=INK2, linespacing=1.3)
-    ax.text(cx + cw / 2, 8,
-            "Races are compared within each source.\nThe two sources are never pooled.",
-            ha="center", va="top", fontsize=8.5, color=INK2, linespacing=1.3)
-    save(fig, "fig_evaldesign")
-
-
-# =============================================================================
-# Figure 4: FPR by race, two test conditions
+# Figure 7: FPR by race, two test conditions
 # =============================================================================
 def fig_contrast():
     rng = np.random.default_rng(SEED)
@@ -330,7 +213,7 @@ def fig_contrast():
     series = [
         ("In-distribution test (FFHQ real faces)", BLUE, -off,
          [rate(INDIST_FP[r]) for r in RACES], [boot_rate(INDIST_FP[r], rng) for r in RACES]),
-        ("Cross-generator test (IMDb real faces)", PURPLE, +off,
+        ("Cross-source/cross-generator test (IMDb real faces)", PURPLE, +off,
          [rate(CROSS["baseline"]["fp"][r]) for r in RACES],
          [CROSS_FPR_CI_REPORTED[r] for r in RACES]),
     ]
@@ -340,7 +223,7 @@ def fig_contrast():
                     solid_capstyle="round", zorder=3)
         ax.plot(x + dx, vals, "o", ms=7, color=col, mec=SURFACE, mew=1.5,
                 zorder=4, label=label)
-    # direct labels on the cross-generator points only
+    # value labels on the second test only
     for xi, v, (lo, hi) in zip(x, series[1][3], series[1][4]):
         ax.text(xi + off + 0.07, v, pct(v), va="center", ha="left", fontsize=10, color=INK)
     ax.text(x[1] - off, 0.04, r"0 to 0.5$\%$ for every group", ha="center", va="bottom",
@@ -363,7 +246,7 @@ def fig_contrast():
 
 
 # =============================================================================
-# Figure 5: fairness gaps, baseline vs fair (forest plot)
+# Figure 8: gaps between groups, baseline vs fair
 # =============================================================================
 def fig_forest():
     rng = np.random.default_rng(SEED)
@@ -405,7 +288,7 @@ def fig_forest():
 
 
 # =============================================================================
-# Figure 6: cross-generator confusion matrices
+# Figure 9: cross-source/cross-generator confusion matrices
 # =============================================================================
 def fig_confusion():
     """Correct cells are neutral; the two error cells are shaded by their rate."""
@@ -455,7 +338,7 @@ def fig_confusion():
 
 
 # =============================================================================
-# Extra figure: ITA scale and why lighting moves it
+# Figure 2: ITA scale and why lighting moves it
 # =============================================================================
 ITA_BANDS = [(-60, -30, "dark"), (-30, 10, "brown"), (10, 28, "tan"),
              (28, 41, "intermediate"), (41, 55, "light"), (55, 80, "very light")]
@@ -522,7 +405,7 @@ def fig_ita():
 
 
 # =============================================================================
-# Extra figure: average loss versus CVaR (illustration with simulated losses)
+# Figure 5: average loss versus CVaR, with simulated losses
 # =============================================================================
 def fig_cvar():
     rng = np.random.default_rng(SEED)
@@ -564,8 +447,6 @@ FIGURES = {
     "ita": fig_ita,
     "cvar": fig_cvar,
     "composition": fig_composition,
-    "arch": fig_arch,
-    "evaldesign": fig_evaldesign,
     "contrast": fig_contrast,
     "forest": fig_forest,
     "confusion": fig_confusion,

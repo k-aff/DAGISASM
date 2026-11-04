@@ -1,7 +1,0 @@
-03:45:22 | INFO    | Config override -> config\model140k_swin_aug_s2.yaml for: swin
-03:45:27 | INFO    | Leakage check passed: 18112 unique sources across 28200 rows
-03:45:27 | INFO    | Augmented rows: 10088 (train only)
-03:45:27 | INFO    | Manifest data\faces140k\manifests\manifest_aug.csv -> 28200 rows
-03:45:27 | INFO    | === TRAIN Swin-Tiny (baseline) | backbone=swin_tiny_patch4_window7_224 | device=cpu | train=24000 val=1800 ===
-Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
-05:08:41 | INFO    | epoch 00 | loss 0.3635 | val_auc 0.9980 | val_fpr_gap 0.0033 | sel 0.9980 | 4993.1s

@@ -1,9 +1,7 @@
-"""Face localisation and cropping.
+"""Face detection and cropping, used by the ITA check.
 
-Default backend is OpenCV's bundled Haar cascade: zero extra downloads,
-fully offline. For higher recall install `facenet-pytorch` and set
-face.detector: mtcnn. `none` disables detection (used for smoke tests and
-datasets that are already tight face crops).
+The default detector is OpenCV's bundled Haar cascade. `mtcnn` needs the
+optional facenet-pytorch package; `none` returns the whole image.
 """
 from __future__ import annotations
 

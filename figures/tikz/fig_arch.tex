@@ -1,0 +1,377 @@
+% =====================================================================
+%  Figure 4: architecture of the multimodal detector (TikZ)
+%
+%  Portrait page. The two streams run left to right, then both feature
+%  vectors drop down to the concatenation and the flow continues
+%  downwards: fusion, embedding z, the two heads, then detail boxes.
+%
+%  Use inside a normal figure environment:
+%      \begin{figure}[p]
+%      \centering
+%      \input{figures/fig_arch.tex}
+%      \caption{...}\label{fig:arch}
+%      \end{figure}
+%
+%  Needs in the preamble:
+%      \usepackage{tikz}
+%      \usetikzlibrary{positioning,fit,backgrounds,arrows.meta,calc}
+%
+%  Drawing conventions
+%    * a block is a tensor: front face = spatial size, depth = channels
+%      (log scale); grid lines on the Swin blocks are attention windows
+%      (8 x 8 windows at 56^2, 4 x 4 at 28^2, 2 x 2 at 14^2, one at 7^2)
+%    * a row or column of cells is a vector, one cell per 64 values
+%    * shapes are channels x spatial size, so 192 x 28^2 = 192 x 28 x 28
+%  Values follow the model code (detector.py, freq.py, grl.py, trainer.py)
+%  and timm's swin_tiny_patch4_window7_224 (depths 2-2-6-2, heads 3-6-12-24).
+%  Colours follow the poster: blue = image stream, purple = frequency
+%  stream, magenta = fusion and forgery head, teal = race adversary.
+%  Coordinates are scaled (x 1.1, y 1.02) to give the parts more room,
+%  so the canvas is about 15.1 cm x 15.9 cm. The picture is centred in a
+%  box of text width and reaches about 0.7 cm into each margin.
+% =====================================================================
+\definecolor{archink}{HTML}{0B0B0B}
+\definecolor{archinktwo}{HTML}{52514E}
+\definecolor{archnavy}{HTML}{112D52}
+\definecolor{archblue}{HTML}{4A90E2}   % image stream (the poster's light blue, deepened)
+\definecolor{archpurple}{HTML}{7030A0} % frequency stream
+\definecolor{archmag}{HTML}{CC2CAA}    % fusion, embedding and forgery head
+\definecolor{archteal}{HTML}{2B9288}   % race adversary
+\colorlet{archmix}{archmag}
+\providecommand{\archsmall}{\fontsize{7}{8.4}\selectfont}
+\providecommand{\arshape}[1]{\textcolor{archinktwo}{\mbox{$#1$}}}
+%
+% ---- glyphs -----------------------------------------------------------
+% \archcube{(centre)}{front size}{depth}{colour}{windows per side}
+\providecommand{\archcube}[5]{%
+  \begin{scope}[shift={#1}]
+    \pgfmathsetmacro{\arS}{#2}\pgfmathsetmacro{\arH}{#2/2}%
+    \pgfmathsetmacro{\arDX}{0.55*#3}\pgfmathsetmacro{\arDY}{0.40*#3}%
+    \begin{scope}[shift={(-\arDX/2,-\arDY/2)}, line width=0.3pt, line join=round]
+      \filldraw[fill=#4!88!black, draw=#4!60!black]
+        (\arH,-\arH) -- ++(\arDX,\arDY) -- ++(0,\arS) -- (\arH,\arH) -- cycle;
+      \filldraw[fill=#4!62!white, draw=#4!60!black]
+        (-\arH,\arH) -- ++(\arDX,\arDY) -- ++(\arS,0) -- (\arH,\arH) -- cycle;
+      \filldraw[fill=#4!30!white, draw=#4!60!black] (-\arH,-\arH) rectangle (\arH,\arH);
+      \ifnum#5>1
+        \pgfmathsetmacro{\arStep}{#2/#5}\pgfmathtruncatemacro{\arN}{#5-1}%
+        \foreach \k in {1,...,\arN}{%
+          \draw[white, line width=0.35pt] (-\arH+\k*\arStep,-\arH) -- ++(0,\arS);
+          \draw[white, line width=0.35pt] (-\arH,-\arH+\k*\arStep) -- ++(\arS,0);
+        }%
+      \fi
+    \end{scope}
+  \end{scope}}
+% \archvec{(centre)}{cells}{colour}: horizontal vector, cells of 0.12 cm
+\providecommand{\archvec}[3]{%
+  \begin{scope}[shift={#1}]
+    \pgfmathsetmacro{\arW}{#2*0.12}%
+    \foreach \k in {1,...,#2}{%
+      \filldraw[fill=#3!78!white, draw=white, line width=0.35pt]
+        ({-\arW/2+(\k-1)*0.12},-0.06) rectangle ++(0.12,0.12);
+    }
+  \end{scope}}
+% \archvvec{(centre)}{cells}{colour}: vertical vector, cells of 0.12 cm
+\providecommand{\archvvec}[3]{%
+  \begin{scope}[shift={#1}]
+    \pgfmathsetmacro{\arW}{#2*0.12}%
+    \foreach \k in {1,...,#2}{%
+      \filldraw[fill=#3!78!white, draw=white, line width=0.35pt]
+        (-0.06,{\arW/2-\k*0.12}) rectangle ++(0.12,0.12);
+    }
+  \end{scope}}
+% \archrgb{(centre)}: the input crop as three channels, front one with a face
+\providecommand{\archrgb}[1]{%
+  \begin{scope}[shift={#1}, line width=0.3pt]
+    \begin{scope}[shift={(-0.1,-0.07)}]
+      \filldraw[fill=blue!14!white, draw=blue!55!black] (-0.45,-0.45) ++(0.2,0.14) rectangle ++(0.9,0.9);
+      \filldraw[fill=green!16!white, draw=green!45!black] (-0.45,-0.45) ++(0.1,0.07) rectangle ++(0.9,0.9);
+      \filldraw[fill=red!12!white, draw=red!50!black] (-0.45,-0.45) rectangle ++(0.9,0.9);
+      \foreach \k in {1,...,5}{%
+        \draw[red!25!white, line width=0.2pt] (-0.45+\k*0.15,-0.45) -- ++(0,0.9);
+        \draw[red!25!white, line width=0.2pt] (-0.45,-0.45+\k*0.15) -- ++(0.9,0);
+      }
+      \draw[archink!80, line width=0.45pt] (0,0.02) ellipse (0.23 and 0.3);
+      \fill[archink!80] (-0.085,0.09) circle (0.027) (0.085,0.09) circle (0.027);
+      \draw[archink!80, line width=0.45pt] (-0.095,-0.1) .. controls (-0.03,-0.17) and (0.03,-0.17) .. (0.095,-0.1);
+    \end{scope}
+  \end{scope}}
+% \archgrey{(centre)}{size}: greyscale copy of the crop
+\providecommand{\archgrey}[2]{%
+  \begin{scope}[shift={#1}]
+    \pgfmathsetmacro{\arH}{#2/2}%
+    \shade[top color=black!8, bottom color=black!35] (-\arH,-\arH) rectangle (\arH,\arH);
+    \draw[black!55, line width=0.45pt] (0,0.02) ellipse ({0.26*#2} and {0.34*#2});
+    \fill[black!60] ({-0.1*#2},{0.1*#2}) circle (0.025) ({0.1*#2},{0.1*#2}) circle (0.025);
+    \draw[black!60, line width=0.3pt] (-\arH,-\arH) rectangle (\arH,\arH);
+  \end{scope}}
+% \archspec{(centre)}{size}: centred log-amplitude spectrum, bright at low frequency
+\providecommand{\archspec}[2]{%
+  \begin{scope}[shift={#1}]
+    \pgfmathsetmacro{\arH}{#2/2}%
+    \shade[inner color=white, outer color=archpurple] (-\arH,-\arH) rectangle (\arH,\arH);
+    \draw[white, line width=0.3pt, opacity=0.8] (-\arH,0) -- (\arH,0) (0,-\arH) -- (0,\arH);
+    \draw[archpurple!70!black, line width=0.3pt] (-\arH,-\arH) rectangle (\arH,\arH);
+  \end{scope}}
+%
+%
+\begingroup\linespread{1}\selectfont   % ignore the report's line spread inside the figure
+\makebox[\textwidth][c]{%
+\begin{tikzpicture}[
+    xscale=1.1, yscale=1.02,
+    font=\scriptsize, text=archink,
+    >={Stealth[length=4pt,width=3.2pt]},
+    flow/.style={->, draw=archnavy!70, line width=0.7pt},
+    bus/.style={->, line width=0.7pt, rounded corners=4pt},
+    thin flow/.style={->, draw=archnavy!70, line width=0.5pt},
+    lab/.style={font=\scriptsize\bfseries, anchor=base},
+    det/.style={font=\archsmall, text=archinktwo, anchor=north, align=flush center, inner sep=0pt},
+    op/.style={draw=#1!55, fill=#1!16!white, rounded corners=2.5pt, line width=0.4pt,
+               font=\archsmall, inner sep=1.5pt, minimum height=0.36cm, align=center},
+    op/.default=archblue,
+    plus/.style={draw=archinktwo, fill=white, circle, inner sep=0pt, minimum size=0.22cm,
+                 line width=0.35pt, font=\archsmall},
+    box/.style={rounded corners=7pt, line width=0.6pt},
+    tab/.style={fill=#1, text=white, font=\scriptsize\bfseries, rounded corners=3pt,
+                inner xsep=4pt, inner ysep=2.2pt},
+    ttl/.style={tab=#1, anchor=north west},
+  ]
+  % =====================================================================
+  % everything above the detail boxes sits in one shifted scope
+  % (canvas 13.7 cm x 15.4 cm, fits a portrait text block)
+  % =====================================================================
+  \begin{scope}[yshift=-2.1cm]
+  \fill[box, fill=archpurple!8] (1.6,14.05) rectangle (13.1,17.5);
+  \fill[box, fill=archblue!9] (1.6,10.3) rectangle (13.1,13.75);
+  \fill[box, fill=archmag!8] (0,5.0) rectangle (6.75,7.75);
+  \filldraw[box, draw=archteal!55, fill=archteal!9, dashed] (6.95,5.0) rectangle (13.7,7.75);
+
+  \node[tab=archpurple, anchor=west] (ftab) at (1.85,17.5) {Frequency stream: spectrum CNN};
+  \node[anchor=west, font=\scriptsize, text=archinktwo, inner sep=0pt] at ([xshift=4pt]ftab.east) {(trained from scratch)};
+  \node[tab=archblue!80!black, anchor=west] (itab) at (1.85,13.75) {Image stream: Swin-Tiny};
+  \node[anchor=west, font=\scriptsize, text=archinktwo, inner sep=0pt] at ([xshift=4pt]itab.east) {(pretrained on ImageNet, fine-tuned)};
+
+  % =====================================================================
+  % input
+  % =====================================================================
+  \archrgb{(0.72,13.95)}
+  \node[det] at (0.72,13.3) {\textbf{\textcolor{archink}{Face crop}}\\RGB,\\normalised\\\arshape{3 \times 224^2}};
+  \draw[flow] (1.22,14.25) .. controls (1.6,14.6) and (1.5,15.95) .. (1.95,15.95);
+  \draw[flow] (1.22,13.65) .. controls (1.6,13.3) and (1.6,12.2) .. (2.1,12.2);
+
+  % =====================================================================
+  % frequency stream (top row; labels 16.72, glyphs 15.95, details 15.3)
+  % =====================================================================
+  \archgrey{(2.42,15.95)}{0.85}
+  \node[lab] at (2.42,16.72) {Greyscale};
+  \node[det, text width=1.55cm] at (2.42,15.3) {mean of RGB\\\arshape{1 \times 224^2}};
+
+  \archspec{(4.04,15.95)}{0.85}
+  \node[lab] at (4.04,16.72) {Spectrum};
+  \node[det, text width=1.55cm] at (4.04,15.3) {2D FFT,\\$\log(1+|\mathcal{F}|)$,\\centred\\\arshape{1 \times 224^2}};
+
+  \archcube{(5.66,15.95)}{0.78}{0.28}{archpurple}{1}
+  \node[lab] at (5.66,16.72) {Conv 1};
+  \node[det, text width=1.55cm] at (5.66,15.3) {stride 2,\\BN, GELU\\\arshape{16 \times 112^2}};
+
+  \archcube{(7.28,15.95)}{0.62}{0.35}{archpurple}{1}
+  \node[lab] at (7.28,16.72) {Conv 2};
+  \node[det, text width=1.55cm] at (7.28,15.3) {stride 2,\\BN, GELU\\\arshape{32 \times 56^2}};
+
+  \archcube{(8.9,15.95)}{0.50}{0.42}{archpurple}{1}
+  \node[lab] at (8.9,16.72) {Conv 3};
+  \node[det, text width=1.55cm] at (8.9,15.3) {stride 2,\\BN, GELU\\\arshape{64 \times 28^2}};
+
+  \archcube{(10.52,15.95)}{0.38}{0.49}{archpurple}{1}
+  \node[lab] at (10.52,16.72) {Conv 4};
+  \node[det, text width=1.55cm] at (10.52,15.3) {stride 2,\\BN, GELU\\\arshape{128 \times 14^2}};
+
+  \archvvec{(12.45,15.95)}{2}{archpurple}
+  \node[lab] at (12.45,16.72) {Pool};
+  \node[det, text width=1.2cm] at (12.2,15.3) {pool, then\\linear\\\arshape{128}};
+
+  \draw[flow] (2.42+0.5,15.95) -- (4.04-0.5,15.95);
+  \foreach \a/\b in {4.04/5.66, 5.66/7.28, 7.28/8.9, 8.9/10.52}
+    \draw[flow] (\a+0.52,15.95) -- (\b-0.47,15.95);
+  \draw[flow] (10.52+0.38,15.95) -- (12.45-0.18,15.95);
+
+  % =====================================================================
+  % image stream (bottom row; labels 12.97, glyphs 12.2, details 11.55)
+  % =====================================================================
+  \archcube{(2.55,12.2)}{0.68}{0.46}{archblue}{8}
+  \node[lab] at (2.55,12.97) {Patch embed};
+  \node[det, text width=1.88cm] at (2.55,11.55) {conv $4{\times}4$,\\stride 4, LN\\\arshape{96 \times 56^2}};
+
+  \archcube{(4.5,12.2)}{0.68}{0.46}{archblue}{8}
+  \node[lab] at (4.5,12.97) {Stage 1};
+  \node[det, text width=1.88cm] at (4.5,11.55) {2 Swin blocks,\\3 heads\\\arshape{96 \times 56^2}};
+
+  \archcube{(6.45,12.2)}{0.52}{0.53}{archblue}{4}
+  \node[lab] at (6.45,12.97) {Stage 2};
+  \node[det, text width=1.88cm] at (6.45,11.55) {patch merging,\\2 blocks,\\6 heads\\\arshape{192 \times 28^2}};
+
+  \archcube{(8.4,12.2)}{0.40}{0.60}{archblue}{2}
+  \node[lab] at (8.4,12.97) {Stage 3};
+  \node[det, text width=1.88cm] at (8.4,11.55) {patch merging,\\6 blocks,\\12 heads\\\arshape{384 \times 14^2}};
+
+  \archcube{(10.35,12.2)}{0.30}{0.67}{archblue}{1}
+  \node[lab] at (10.35,12.97) {Stage 4};
+  \node[det, text width=1.88cm] at (10.35,11.55) {patch merging,\\2 blocks,\\24 heads\\\arshape{768 \times 7^2}};
+
+  \archvvec{(12.45,12.2)}{9}{archblue}
+  \node[lab] at (12.45,12.97) {Pool};
+  \node[det, text width=1.0cm] at (12.3,11.5) {after LN\\\arshape{768}};
+
+  \foreach \a/\b in {2.55/4.5, 4.5/6.45, 6.45/8.4, 8.4/10.35}
+    \draw[flow] (\a+0.55,12.2) -- (\b-0.48,12.2);
+  \draw[flow] (10.35+0.45,12.2) -- (12.45-0.18,12.2);
+
+  % =====================================================================
+  % the two feature vectors run down to the concatenation
+  % =====================================================================
+  \draw[bus, draw=archblue!85!black] (12.51,12.2) -- (12.95,12.2) -- (12.95,9.95) -- (6.7,9.95) -- (6.7,9.56);
+  \draw[bus, draw=archpurple] (12.51,15.95) -- (13.4,15.95) -- (13.4,9.75) -- (7.75,9.75) -- (7.75,9.56);
+  \node[font=\archsmall, text=archblue!85!black, anchor=south, inner sep=1pt] at (12.2,9.97) {768};
+  \node[font=\archsmall, text=archpurple, anchor=north, inner sep=1pt] at (12.2,9.73) {128};
+
+  % =====================================================================
+  % concatenate, fusion MLP, embedding z
+  % =====================================================================
+  \archvec{(6.7,9.45)}{12}{archblue}
+  \archvec{(7.75,9.45)}{2}{archpurple}
+  \node[anchor=east, align=right, inner sep=0pt] at (5.62,9.45)
+    {\textbf{Concatenate}\\\archsmall\textcolor{archinktwo}{$768 + 128 = 896$}};
+  \fill[archmag!22!white, rounded corners=1.5pt] (5.8,9.37) -- (7.9,9.37) -- (7.27,8.6) -- (6.43,8.6) -- cycle;
+  \archvec{(6.85,8.5)}{4}{archmix}
+  \node[anchor=west, align=left, inner sep=0pt] at (8.15,8.95)
+    {\textbf{\textcolor{archmag!85!black}{Fusion MLP}}\\\archsmall\textcolor{archinktwo}{LayerNorm, linear $896 \rightarrow 256$,}\\
+     \archsmall\textcolor{archinktwo}{GELU, dropout 0.1}};
+  \node[anchor=east, align=right, inner sep=0pt, font=\archsmall, text=archinktwo] at (6.4,8.5)
+    {shared embedding $z \in \mathbb{R}^{256}$};
+
+  % z feeds both heads
+  \draw[draw=archnavy!70, line width=0.7pt] (6.85,8.44) -- (6.85,8.12);
+  \draw[flow, rounded corners=4pt] (6.85,8.12) -| (3.375,7.77);
+  \draw[flow, dashed, rounded corners=4pt] (6.85,8.12) -| (10.325,7.77);
+
+  % =====================================================================
+  % forgery head
+  % =====================================================================
+  \node[tab=archmag] at (3.375,7.75) {Forgery head};
+  \begin{scope}[shift={(3.375,6.82)}]
+    \archvec{(-1.75,0)}{4}{archmix}
+    \draw[thin flow] (-1.42,0) -- (-1.12,0);
+    \node[op=archmag, minimum width=1.1cm] (fl) at (-0.48,0) {linear\\$256 \rightarrow 1$};
+    \draw[thin flow] (fl.east) -- (0.38,0);
+    \filldraw[fill=white, draw=archmag!70, line width=0.4pt, rounded corners=2pt]
+      (0.42,-0.23) rectangle (0.92,0.23);
+    \draw[archmag, line width=0.6pt, domain=-1:1, samples=25, smooth]
+      plot ({0.67+0.2*\x}, {-0.13+0.26/(1+exp(-5*\x))});
+    \node[font=\archsmall, text=archinktwo, anchor=north] at (0.67,-0.26) {sigmoid};
+    \draw[thin flow] (0.96,0) -- (1.25,0);
+    \node[anchor=west, inner sep=0pt] at (1.3,0) {$p(\mathrm{fake})$};
+  \end{scope}
+  \node[det, text width=6.3cm] at (3.375,6.12)
+    {$p = \sigma(w^{\top} z + b)$ is the chance that the face is fake;\\
+     the face is called fake if $p \geq 0.5$, otherwise real;\\
+     loss $L_{\mathrm{task}}$: BCE (baseline) or DAW-FDD (fair)};
+
+  % =====================================================================
+  % race adversary (fair recipe only)
+  % =====================================================================
+  \node[tab=archteal] at (10.325,7.75) {Race adversary (fair model only)};
+  \begin{scope}[shift={(10.325,6.82)}]
+    \archvec{(-2.0,0)}{4}{archmix}
+    \draw[thin flow] (-1.67,0) -- (-1.43,0);
+    \filldraw[fill=white, draw=archteal, line width=0.5pt] (-1.2,0) circle (0.22);
+    \node[inner sep=0pt, font=\tiny] at (-1.2,0) {$-\lambda$};
+    \node[font=\archsmall, text=archinktwo, anchor=north] at (-1.2,-0.26) {reversal};
+    \draw[thin flow] (-0.97,0) -- (-0.72,0);
+    \node[op=archteal] (am) at (0.05,0) {MLP, GELU\\$256 {\rightarrow} 128 {\rightarrow} 3$};
+    \draw[thin flow] (am.east) -- (1.08,0);
+    \foreach \x/\hgt/\l in {1.22/0.22/B, 1.44/0.40/I, 1.66/0.29/W}{
+      \fill[archteal!80!white, rounded corners=0.6pt]
+        (\x-0.075,-0.18) rectangle (\x+0.075,-0.18+\hgt);
+      \node[font=\tiny, text=archinktwo, inner sep=0pt, anchor=north] at (\x,-0.22) {\l};
+    }
+  \end{scope}
+  \node[det, text width=6.3cm] at (10.325,6.12)
+    {softmax over Black, Indian and White; the reversed\\
+     gradient pushes $z$ to hide race; total loss\\
+     $L = L_{\mathrm{task}} + \beta\, L_{\mathrm{adv}}$, and $\lambda$ rises to 1 over 2 epochs};
+
+  \end{scope}
+
+  % =====================================================================
+  % detail boxes along the bottom (y 0 to 2.75)
+  % =====================================================================
+  \fill[box, fill=archblue!9] (0,0) rectangle (6.1,2.75);
+  \fill[box, fill=archblue!9] (6.25,0) rectangle (9.85,2.75);
+  \fill[box, fill=archpurple!8] (10.0,0) rectangle (13.7,2.75);
+
+  % ---- inside a Swin block pair ------------------------------------------
+  \node[ttl=archblue!80!black] at (0.15,2.71) {Inside a Swin block pair};
+  \foreach \r/\yy/\att/\blk in {1/2.0/W-MSA/l, 2/1.27/SW-MSA/{l{+}1}}{
+    \node[font=\archsmall, text=archinktwo, anchor=west, inner sep=0pt] at (0.12,\yy) {block $\blk$};
+    \node[op, minimum width=0.42cm] (ln1-\r) at (1.74,\yy) {LN};
+    \node[op, minimum width=0.85cm] (att-\r) at (2.72,\yy) {\att};
+    \node[plus] (p1-\r) at (3.47,\yy) {$+$};
+    \node[op, minimum width=0.42cm] (ln2-\r) at (3.97,\yy) {LN};
+    \node[op, minimum width=0.62cm] (mlp-\r) at (4.62,\yy) {MLP};
+    \node[plus] (p2-\r) at (5.2,\yy) {$+$};
+    \draw[thin flow] (1.36,\yy) -- (ln1-\r);
+    \draw[thin flow] (ln1-\r) -- (att-\r);  \draw[thin flow] (att-\r) -- (p1-\r);
+    \draw[thin flow] (p1-\r) -- (ln2-\r);   \draw[thin flow] (ln2-\r) -- (mlp-\r);
+    \draw[thin flow] (mlp-\r) -- (p2-\r);
+    \draw[thin flow] (1.42,\yy) -- ++(0,0.28) -| (p1-\r.north);
+    \draw[thin flow] (3.64,\yy) -- ++(0,0.28) -| (p2-\r.north);
+  }
+  \draw[thin flow] (p2-1.east) -- ++(0.08,0) |- (1.36,1.63) -- (1.36,1.29);
+  \begin{scope}[shift={(5.72,2.0)}]
+    \fill[archblue!45!white, rounded corners=1pt] (-0.24,-0.24) rectangle (0.24,0.24);
+    \draw[white, line width=0.6pt] (0,-0.24) -- (0,0.24) (-0.24,0) -- (0.24,0);
+  \end{scope}
+  \begin{scope}[shift={(5.72,1.27)}]
+    \fill[archblue!45!white, rounded corners=1pt] (-0.24,-0.24) rectangle (0.24,0.24);
+    \draw[white, line width=0.6pt] (-0.12,-0.24) -- (-0.12,0.24) (0.12,-0.24) -- (0.12,0.24)
+                                  (-0.24,-0.12) -- (0.24,-0.12) (-0.24,0.12) -- (0.24,0.12);
+  \end{scope}
+  \node[det, text width=5.8cm] at (3.05,0.92)
+    {attention runs in $7{\times}7$-token windows;\\
+     every second block shifts them by 3 tokens;\\
+     MLP expands $4\times$ (GELU); $+$ is residual};
+
+  % ---- patch merging ------------------------------------------------------
+  \node[ttl=archblue!80!black] at (6.4,2.71) {Patch merging};
+  \begin{scope}[shift={(6.8,1.78)}]
+    \foreach \i in {0,...,3}{\foreach \j in {0,...,3}{
+      \pgfmathtruncatemacro{\q}{mod(\i,2)+2*mod(\j,2)}
+      \ifcase\q \def\arC{archblue!18!white}\or \def\arC{archblue!38!white}\or
+                 \def\arC{archblue!58!white}\or \def\arC{archblue!80!white}\fi
+      \filldraw[fill=\arC, draw=white, line width=0.4pt]
+        (-0.32+\i*0.16,0.16-\j*0.16) rectangle ++(0.16,0.16);
+    }}
+    \draw[archblue!80!black, line width=0.3pt, rounded corners=1pt] (-0.32,-0.32) rectangle (0.32,0.32);
+  \end{scope}
+  \draw[thin flow] (7.17,1.78) -- (7.4,1.78);
+  \foreach \s/\c in {3/80, 2/58, 1/38, 0/18}{
+    \filldraw[fill=archblue!\c!white, draw=white, line width=0.4pt]
+      ({7.48+\s*0.07},{1.6+\s*0.05}) rectangle ++(0.3,0.3);
+  }
+  \draw[thin flow] (8.05,1.78) -- (8.25,1.78);
+  \node[op, minimum width=0.85cm] at (9.02,1.78) {LN, linear\\$4C{\rightarrow}2C$};
+  \node[det] at (6.72,1.36) {$C {\times} H^2$};
+  \node[det] at (8.05,1.36) {$4C {\times} (H/2)^2$};
+  \node[det, text width=3.3cm] at (8.05,0.98)
+    {$2{\times}2$ tokens are joined:\\height and width halve,\\channels double};
+
+  % ---- conv block ---------------------------------------------------------
+  \node[ttl=archpurple] at (10.15,2.71) {Conv block};
+  \node[op=archpurple] (c1) at (10.82,1.78) {conv $3{\times}3$\\stride 2};
+  \node[op=archpurple] (c2) at (11.95,1.78) {Batch\\Norm};
+  \node[op=archpurple] (c3) at (12.9,1.78) {GELU};
+  \draw[thin flow] (c1) -- (c2); \draw[thin flow] (c2) -- (c3);
+  \node[det, text width=3.4cm] at (11.85,1.2)
+    {$C \times H^2 \rightarrow C' \times (H/2)^2$, with $C' = 16, 32, 64, 128$; learnt from scratch on the spectrum};
+\end{tikzpicture}}%
+\endgroup

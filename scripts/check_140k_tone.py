@@ -1,25 +1,23 @@
-r"""Run box-based ITA over a sample of 140k (or ANY image folder) and report
-the skin-tone distribution. No training — just measurement.
+#!/usr/bin/env python3
+r"""Measure ITA skin tone on a random sample of 140k images (the dropped method).
 
-Usage (point it at wherever 140k lives):
-  python check_140k_tone.py --root "C:\path\to\140k" --sample 2000
+Each sampled image goes through the Haar face detector (smallest face 40
+pixels, 30% margin), ITA is measured in the face box, and the result is
+merged into light / medium / dark. Up to 15 crops per group are saved to
+--out so that the groups can be checked by eye.
 
-It walks the folder, detects a face in each sampled image, measures ITA in
-the face region, and prints the tone breakdown + copies sample crops per
-bucket so you can eyeball whether 'dark' is actually dark.
+    python scripts/check_140k_tone.py --root data/raw/real_vs_fake/real-vs-fake --sample 2000
 """
 import argparse, sys, shutil
 from pathlib import Path
 def _bootstrap():
-    """Find the sadf package whether it's under src/ or at the repo root."""
     here = Path(__file__).resolve()
     for parent in [here.parent, *here.parents]:
         for cand in (parent / "src", parent):
             if (cand / "sadf" / "__init__.py").exists():
                 sys.path.insert(0, str(cand))
                 return
-    print("ERROR: could not find the 'sadf' package. Run this from your "
-          "project root (the folder containing scripts/ and sadf/ or src/sadf/).")
+    print("ERROR: could not find the 'sadf' package.")
     sys.exit(1)
 _bootstrap()
 import numpy as np, cv2
@@ -28,8 +26,7 @@ try:
 except ImportError:
     def tqdm(x, **k): return x
 from sadf.data.faces import FaceCropper
-from sadf.data.skin_tone import estimate_ita
-from sadf.data.pilot import coarsen_tone
+from sadf.data.skin_tone import coarsen_tone, estimate_ita
 
 IMG_EXT = {".jpg",".jpeg",".png",".bmp",".webp"}
 
@@ -44,7 +41,7 @@ def main():
     if not root.exists():
         print(f"Folder not found: {root}"); sys.exit(1)
 
-    print(f"Scanning {root} for images (this can take a moment for 140k)...", flush=True)
+    print(f"Scanning {root} for images...", flush=True)
     all_imgs = [p for p in root.rglob("*") if p.suffix.lower() in IMG_EXT]
     print(f"Found {len(all_imgs)} images. Sampling {min(args.sample,len(all_imgs))}...\n")
     if not all_imgs:
@@ -82,9 +79,7 @@ def main():
         pct = counts[k]/total*100 if total else 0
         print(f"  {k:8s}: {counts[k]:5d}  ({pct:.1f}%)")
     print(f"  (no face detected: {no_face} images skipped)")
-    print(f"\nSample crops per bucket in {out}\\<tone>\\ — EYEBALL the dark/ folder.")
-    print("If dark/ is real dark-skinned faces -> 140k is more diverse, switch to it.")
-    print("If dark/ is still light faces -> both datasets are light-skewed (finding).")
+    print(f"\nSample crops per group saved in {out}")
 
 
 if __name__ == "__main__":

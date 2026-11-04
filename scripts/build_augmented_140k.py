@@ -1,51 +1,21 @@
 #!/usr/bin/env python3
-r"""Split-then-augment builder for the 140k-only fairness experiment.
+r"""Split the 140k pool first, then augment the training split only.
 
-ORDER MATTERS. This script splits FIRST, then augments the TRAIN split only.
-Test and val stay pristine originals. Augmenting before splitting would put
-flipped copies of the same face in both train and test, which inflates
-accuracy and invalidates every number downstream.
+1. Keep the 140k rows for the chosen races (Black, Indian, White).
+2. Draw balanced test (400) and validation (300) cells per race x label.
+3. Bring every training cell up to --target-per-cell with augmented copies,
+   saved as PNG under data/faces140k/augmented/.
+4. Write manifest_aug.csv with split, source_id, is_augmented and aug_op,
+   and stop if any source image appears in more than one split.
 
-What it does
-------------
-1. Filters the pool manifest to source == 140k and the chosen races.
-2. Carves balanced TEST and VAL cells (equal n per race x label).
-3. Oversamples the remaining TRAIN cells to a common target using
-   artifact-safe augmentation, writing new images to disk as PNG.
-4. Writes a manifest with split / source_id / is_augmented / aug_op columns.
-5. Asserts no source image appears in more than one split.
+Only horizontal flip, rotation up to 10 degrees, shifts up to 10% and
+brightness/contrast up to 15% are used. Blur, noise, resizing and JPEG
+recompression would remove generator traces, and hue/saturation changes would
+alter apparent skin tone. Copies are saved losslessly so that re-encoding does
+not become a cue that is linked to the augmented (minority) cells.
 
-Artifact safety
----------------
-Deepfake detectors key on generator fingerprints in the high-frequency and
-compression domains. The usual augmentation set destroys them, so this script
-deliberately uses ONLY:
-
-    horizontal flip, rotation +/-10deg, translation <=10%, brightness/contrast +/-15%
-
-and never applies blur, sharpening, noise, rescaling or JPEG recompression.
-Augmented images are saved as PNG (lossless): re-saving as JPEG would add a
-second compression generation that correlates with augmentation, and since
-augmentation concentrates in minority cells, that would become a race-correlated
-artifact -- the exact confound this project keeps tripping over.
-
-Hue/saturation jitter is also excluded: it shifts apparent skin tone, which is
-the grouping variable.
-
-USAGE
------
-  # 1. See the plan without writing anything
-  python scripts\build_augmented_140k.py --manifest data\faces140k\manifests\pool_merged.csv --dry-run
-
-  # 2. Execute
-  python scripts\build_augmented_140k.py --manifest data\faces140k\manifests\pool_merged.csv
-
-  # Useful flags
-  --target-per-cell 4000     images per race x label cell in TRAIN after augmentation
-  --test-per-cell 400        held-out test images per cell (pristine)
-  --val-per-cell 300         validation images per cell (pristine)
-  --max-aug-factor 3.0       refuse to exceed this multiple of originals
-  --no-match-aug-ratio       let White use all-original images (see note below)
+    python scripts/build_augmented_140k.py --manifest data/faces140k/manifests/pool_merged.csv --dry-run
+    python scripts/build_augmented_140k.py --manifest data/faces140k/manifests/pool_merged.csv
 """
 
 from __future__ import annotations
@@ -60,10 +30,7 @@ import numpy as np
 import pandas as pd
 from PIL import Image, ImageEnhance
 
-# --------------------------------------------------------------------------
-# column detection -- the manifests in this project have used both 'race' and
-# 'skin_tone' for the group column, and 'path' / 'filepath' for the image.
-# --------------------------------------------------------------------------
+# manifests have used both 'race' and 'skin_tone' for the group column
 
 RACE_CANDIDATES = ["race", "skin_tone", "race_label", "group"]
 PATH_CANDIDATES = ["path", "filepath", "file", "image_path", "img_path"]
@@ -86,11 +53,6 @@ def detect(df: pd.DataFrame, candidates: list[str], what: str, override: str | N
     )
 
 
-# --------------------------------------------------------------------------
-# augmentation -- artifact-safe transforms only
-# --------------------------------------------------------------------------
-
-
 def seeded_rng(source_path: str, copy_index: int, global_seed: int) -> random.Random:
     """Deterministic per-(image, copy) RNG so runs are reproducible."""
     key = f"{source_path}|{copy_index}|{global_seed}".encode()
@@ -99,21 +61,18 @@ def seeded_rng(source_path: str, copy_index: int, global_seed: int) -> random.Ra
 
 
 def augment(img: Image.Image, rng: random.Random) -> tuple[Image.Image, str]:
-    """Apply the safe transform set. Returns (image, human-readable op string)."""
+    """Apply the transform set. Returns (image, description of the ops)."""
     ops: list[str] = []
 
-    # horizontal flip -- geometry only, no resampling, artifact-preserving
     if rng.random() < 0.5:
         img = img.transpose(Image.FLIP_LEFT_RIGHT)
         ops.append("hflip")
 
-    # rotation +/-10 degrees, bicubic, reflect-style fill via expand=False
     angle = rng.uniform(-10.0, 10.0)
     if abs(angle) > 0.5:
         img = img.rotate(angle, resample=Image.BICUBIC, expand=False)
         ops.append(f"rot{angle:+.1f}")
 
-    # translation up to 10% of each dimension
     w, h = img.size
     dx = int(rng.uniform(-0.10, 0.10) * w)
     dy = int(rng.uniform(-0.10, 0.10) * h)
@@ -123,7 +82,6 @@ def augment(img: Image.Image, rng: random.Random) -> tuple[Image.Image, str]:
         )
         ops.append(f"shift{dx:+d},{dy:+d}")
 
-    # brightness / contrast +/-15%
     b = rng.uniform(0.85, 1.15)
     img = ImageEnhance.Brightness(img).enhance(b)
     ops.append(f"bright{b:.2f}")
@@ -133,11 +91,6 @@ def augment(img: Image.Image, rng: random.Random) -> tuple[Image.Image, str]:
     ops.append(f"contrast{c:.2f}")
 
     return img, "|".join(ops)
-
-
-# --------------------------------------------------------------------------
-# planning
-# --------------------------------------------------------------------------
 
 
 def build_plan(
@@ -169,22 +122,19 @@ def build_plan(
             f"       Lower --test-per-cell / --val-per-cell."
         )
 
-    # cap the target at what the scarcest cell can reach within max_factor
+    # the scarcest cell may not grow beyond max_factor times its originals
     reachable = int((plan["train_orig"] * max_factor).min())
     effective = min(target, reachable)
 
     plan["train_final"] = effective
-    # how many originals we actually draw from (subsample majority cells)
+    # number of originals drawn per cell
     if match_ratio == "global":
-        # every cell uses the SAME augmentation ratio, so "was augmented" carries
-        # no information about race OR label. Safest, but forces every cell down
-        # to the scarcest cell's original count -- costs majority-class diversity.
+        # same augmentation ratio in every cell
         floor = plan["train_orig"].min()
         plan["orig_used"] = np.minimum(plan["train_orig"], floor)
     elif match_ratio == "within-race":
-        # real and fake matched WITHIN each race, so augmentation can never act
-        # as a label shortcut. Ratios still differ ACROSS races, which can make
-        # some groups slightly harder -- note it in limitations.
+        # real and fake use the same number of originals within each race, so
+        # augmentation cannot become a cue for the label (used for the report)
         floors = plan.groupby("race")["train_orig"].transform("min")
         plan["orig_used"] = np.minimum(plan["train_orig"], np.minimum(floors, effective))
     else:  # "none"
@@ -195,11 +145,6 @@ def build_plan(
     plan["test"] = test_n
     plan["val"] = val_n
     return plan, effective
-
-
-# --------------------------------------------------------------------------
-# main
-# --------------------------------------------------------------------------
 
 
 def main() -> None:
@@ -215,11 +160,8 @@ def main() -> None:
     ap.add_argument("--max-aug-factor", type=float, default=3.0)
     ap.add_argument("--aug-balance", dest="match_ratio", default="within-race",
                     choices=["global", "within-race", "none"],
-                    help="how evenly augmentation is spread. 'global' = identical "
-                         "ratio everywhere (safest, fewest unique images). "
-                         "'within-race' = real/fake matched inside each race so "
-                         "augmentation can't become a label shortcut (default). "
-                         "'none' = maximise unique images, accept the correlation.")
+                    help="'global': same ratio in every cell; 'within-race': real and "
+                         "fake matched inside each race (default); 'none': use all originals")
     ap.add_argument("--race-col", default=None)
     ap.add_argument("--label-col", default=None)
     ap.add_argument("--path-col", default=None)
@@ -239,7 +181,6 @@ def main() -> None:
     path_col = detect(df, PATH_CANDIDATES, "path", args.path_col)
     print(f"using columns -> race:'{race_col}'  label:'{label_col}'  path:'{path_col}'")
 
-    # filter to one source so real and fake share a generation pipeline
     if args.source_filter:
         source_col = detect(df, SOURCE_CANDIDATES, "source", args.source_col)
         before = len(df)
@@ -296,7 +237,6 @@ def main() -> None:
         train_pool = cell.iloc[t + v:]
         train_part = train_pool.iloc[:int(prow["orig_used"])]
 
-        # ---- pristine splits, originals only -------------------------------
         for split, part in (("test", test_part), ("val", val_part), ("train", train_part)):
             for _, r in part.iterrows():
                 out_rows.append({
@@ -309,7 +249,7 @@ def main() -> None:
                     "aug_op": "",
                 })
 
-        # ---- augmented copies, TRAIN ONLY ----------------------------------
+        # augmented copies, training split only
         need = int(prow["n_augmented"])
         if need <= 0:
             continue
@@ -353,7 +293,6 @@ def main() -> None:
 
     out = pd.DataFrame(out_rows)
 
-    # ---- leakage assertion --------------------------------------------------
     per_source = out.groupby("source_id")["split"].nunique()
     leaked = per_source[per_source > 1]
     if len(leaked):
@@ -362,7 +301,6 @@ def main() -> None:
         sys.exit("Aborting -- this would invalidate the results.")
     print("\nleakage check PASSED: every source image lives in exactly one split")
 
-    # augmentation must never touch val/test
     assert out[out["split"] != "train"]["is_augmented"].sum() == 0, \
         "FATAL: augmented rows found outside train"
     print("purity check PASSED: val and test contain originals only")

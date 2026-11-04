@@ -1,12 +1,13 @@
-.vscode/
-
+# datasets, FairFace weights and generated images (see README)
 /data/
-/.kaggle/
+/models/
+
+# model checkpoints
+*.pt
 
 __pycache__/
 .pytest_cache/
 .venv/
 venv/
-
-runs/models/
-*.pt
+.vscode/
+.kaggle/

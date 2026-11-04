@@ -87,7 +87,7 @@ def generate_report(
         )
         all_gaps[col] = {**gaps, **cis}
         table.to_csv(out / f"per_group_{col}.csv", index=False)
-        # Friendly display label: the skin_tone column now holds race groups.
+        # the skin_tone column holds the FairFace race label
         pretty = {"skin_tone": "race group", "race": "race group"}.get(col, col)
         _plot_group_bar(table, "fpr", f"False-positive rate by {pretty}", out / f"fpr_by_{col}.png")
         _plot_group_bar(table, "auc", f"AUC by {pretty}", out / f"auc_by_{col}.png")

@@ -1,26 +1,20 @@
 #!/usr/bin/env python3
-r"""Label new sources (SD fakes + imdb reals) with FairFace and merge them into
-the existing 140k labeled pool (raw_race_labels.csv), producing a combined pool
-ready for balance_by_group.py.
+r"""Label the AI-Face test sources with FairFace and merge them with the 140k labels.
 
-Keeps everything on the SAME race axis (FairFace) as 140k, and preserves the
-domain pairing: SD fakes (wiki-derived) <-> imdb reals.
+Adds the Stable Diffusion 1.5 fakes (label 1) and the IMDb-WIKI real faces
+(label 0) to raw_race_labels.csv, using the same FairFace model and settings,
+and tags every row with its source (140k, sd_wiki or imdb):
 
-USAGE:
-  python scripts\merge_new_sources.py ^
-      --pool     data\faces140k\manifests\raw_race_labels.csv ^
-      --sd-dir   "data\raw\StableDiffusion1.5_wiki_processed_process" ^
-      --imdb-dir "data\raw\imdb_wiki" ^
-      --weights  models\fairface\res34_fair_align_multi_7_20190809.pt ^
-      --out      data\faces140k\manifests\pool_merged.csv
+    python scripts/merge_new_sources.py \
+        --pool     data/faces140k/manifests/raw_race_labels.csv \
+        --sd-dir   data/raw/StableDiffusion1.5_wiki_processed_process \
+        --imdb-dir data/raw/imdb_wiki \
+        --weights  models/fairface/res34_fair_align_multi_7_20190809.pt \
+        --out      data/faces140k/manifests/pool_merged.csv
 
-Then rebalance (bigger Indian ceiling -> bigger balanced set):
-  python scripts\balance_by_group.py ^
-      --manifest data\faces140k\manifests\pool_merged.csv ^
-      --out      data\faces140k\manifests\manifest.csv ^
-      --drop-other --min-per-cell 50
-
-Then retrain Swin (final) + Xception (RQ2) as before.
+The split column written here is not used later: build_augmented_140k.py
+re-splits the 140k rows, and eval_cross_generator.py uses every sd_wiki and
+imdb row.
 """
 from __future__ import annotations
 
@@ -63,7 +57,7 @@ SA_MAP = {"White": "White", "Black": "Black", "Indian": "Indian",
 
 def load_fairface(weights: str, device: str) -> nn.Module:
     m = torchvision.models.resnet34(weights=None)
-    m.fc = nn.Linear(m.fc.in_features, 18)
+    m.fc = nn.Linear(m.fc.in_features, 18)  # 7 race + 2 gender + 9 age
     state = torch.load(weights, map_location=device, weights_only=False)
     if isinstance(state, dict) and "state_dict" in state:
         state = state["state_dict"]
@@ -130,13 +124,11 @@ def main() -> None:
     imdb = label_folder(Path(args.imdb_dir), 0, model, tf, device)  # reals
 
     pool = pd.read_csv(args.pool)
-    # keep only the columns we can align on; fill missing consistently
     keep = ["path", "label", "race", "race7", "skin_tone", "skin_tone_ita", "status"]
     for df in (pool, sd, imdb):
         for c in keep:
             if c not in df.columns:
                 df[c] = "n/a" if c not in ("label",) else 0
-    # tag source for the record (useful for domain-shift checks later)
     pool["source"] = pool.get("source", "140k")
     sd["source"] = "sd_wiki"
     imdb["source"] = "imdb"
@@ -144,22 +136,19 @@ def main() -> None:
     merged = pd.concat([pool[keep + ["source"]], sd[keep + ["source"]],
                         imdb[keep + ["source"]]], ignore_index=True)
 
-    # NOTE: no 'split' assigned here on the NEW rows — balance_by_group needs a
-    # split column. Assign a stratified split for the merged pool so new faces
-    # get train/val/test too. Simple 70/15/15 within (race,label,source).
+    # 70/15/15 split within (race, label, source); kept so that every row has a
+    # split value, the later steps do not rely on it
     rng = np.random.default_rng(0)
     merged["split"] = "train"
     for _, idx in merged.groupby(["race", "label", "source"]).groups.items():
         idx = np.array(list(idx)); rng.shuffle(idx)
         n = len(idx)
-        # robust rounding: guarantee val+test each get at least 1 when n>=3
         n_va = max(1, round(n * 0.15)) if n >= 3 else 0
         n_te = max(1, round(n * 0.15)) if n >= 3 else 0
-        if n_va + n_te >= n:  # tiny group safety
+        if n_va + n_te >= n:
             n_va = n_te = max(0, (n - 1) // 3)
         merged.loc[idx[:n_va], "split"] = "val"
         merged.loc[idx[n_va:n_va + n_te], "split"] = "test"
-        # the rest stay 'train'
 
     Path(args.out).parent.mkdir(parents=True, exist_ok=True)
     merged.to_csv(args.out, index=False)
@@ -168,9 +157,6 @@ def main() -> None:
     log.info("Race x label in merged pool:\n%s",
              pd.crosstab(merged["race"], merged["label"]).to_string())
     log.info("By source:\n%s", merged["source"].value_counts().to_string())
-    print("\nNEXT: rebalance ->")
-    print(f"  python scripts\\balance_by_group.py --manifest {args.out} \\")
-    print("      --out data\\faces140k\\manifests\\manifest.csv --drop-other --min-per-cell 50")
 
 
 if __name__ == "__main__":

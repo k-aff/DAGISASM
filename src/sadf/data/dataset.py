@@ -28,8 +28,7 @@ def make_transforms(cfg: DotDict, train: bool) -> T.Compose:
     size = int(cfg.image.size)
     ops: list = [T.Resize((size, size))]
     if train:
-        # Deliberately colour-preserving: photometric jitter would perturb the
-        # very skin-tone signal whose fairness we are auditing.
+        # flip only: colour changes would alter the apparent skin tone
         ops.append(T.RandomHorizontalFlip())
     ops += [T.ToTensor(), T.Normalize(cfg.image.mean, cfg.image.std)]
     return T.Compose(ops)

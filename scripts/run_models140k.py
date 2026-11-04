@@ -1,25 +1,22 @@
 #!/usr/bin/env python3
-"""Train and compare three detector backbones on the shared harvest.
+"""Train and evaluate the detector on the 140k manifests.
 
-The harvest + split are done ONCE (shared data); each model then trains
-on identical data so the comparison is fair. Designed to be resumable
-and to fit CPU overnight runs — you can train models one at a time.
+Final models (balanced, augmented training set):
 
-    # one-time, shared data (only if not already done):
-    python scripts/run_pilot.py --config config/model_vit.yaml --stage harvest,split
+    python scripts/run_models140k.py --train swin --recipe baseline --config config/model140k_swin_aug.yaml
+    python scripts/run_models140k.py --train swin --recipe fair     --config config/model140k_swin_aug.yaml
+    python scripts/run_models140k.py --eval swin --recipe baseline  --config config/model140k_swin_aug.yaml
+    python scripts/run_models140k.py --eval swin --recipe fair      --config config/model140k_swin_aug.yaml
 
-    # train each model (do these across your overnight sessions):
-    python scripts/run_models.py --train vit
-    python scripts/run_models.py --train xception
-    python scripts/run_models.py --train swin
+Preliminary backbone comparison (manifest.csv from build_140k_race.py):
 
-    # once all three are trained, evaluate + compare:
-    python scripts/run_models.py --eval-all
-    python scripts/run_models.py --compare
+    python scripts/run_models140k.py --train vit
+    python scripts/run_models140k.py --train xception
+    python scripts/run_models140k.py --train swin
+    python scripts/run_models140k.py --eval-all
+    python scripts/run_models140k.py --compare
 
-Each model reuses the SAME baseline recipe (plain BCE) so the
-comparison isolates architecture. To also get the fairness recipe per
-model, pass --recipe fair to --train.
+Checkpoints and evaluation reports are written under each config's paths.runs.
 """
 from __future__ import annotations
 
@@ -71,28 +68,21 @@ def _cfg_get(cfg, path: str, default):
 
 
 def _load_split(cfg) -> pd.DataFrame:
-    # Which manifest to train from. Defaults to manifest.csv so older configs
-    # behave exactly as before; the augmented run sets manifest_file.
     name = str(_cfg_get(cfg, "paths.manifest_file", "manifest.csv"))
     path = Path(cfg.paths.manifests) / name
     if not path.exists():
-        raise SystemExit(
-            f"{path} missing. Run the shared harvest+split first:\n"
-            "  python scripts/run_pilot.py --config config/model_vit.yaml "
-            "--stage harvest,split"
-        )
+        raise SystemExit(f"{path} missing. Build the manifest first (see README).")
     df = pd.read_csv(path, low_memory=False)
 
-    # `status` comes from the harvester. Manifests built by
-    # build_augmented_140k.py have no such column - every row is usable.
+    # manifest_aug.csv has no status column; every row in it is usable
     if "status" in df.columns:
         df = df[df["status"] == "ok"]
 
     if "split" not in df.columns:
         raise SystemExit(f"{path} has no 'split' column.")
 
-    # Leakage guard: augmented copies carry source_id pointing at their
-    # original. No source image may appear in more than one split.
+    # augmented copies carry the source_id of their original, so no source
+    # image may appear in more than one split
     if "source_id" in df.columns:
         spread = df.groupby("source_id")["split"].nunique()
         leaked = spread[spread > 1]
@@ -199,8 +189,8 @@ def compare(recipe: str) -> None:
     if not rows:
         raise SystemExit("Nothing to compare. Train and evaluate first.")
 
-    lines = ["# Three-model comparison", "",
-             f"Recipe: `{recipe}` | shared data, identical splits, 3 epochs each", "",
+    lines = ["# Backbone comparison", "",
+             f"Recipe: `{recipe}` | shared data, identical splits", "",
              "## Detection performance (test split)", "",
              "| model | accuracy | precision | recall | AUC | FPR |",
              "| --- | --- | --- | --- | --- | --- |"]
@@ -208,7 +198,7 @@ def compare(recipe: str) -> None:
         lines.append(f"| {name} | {o['accuracy']:.4f} | {o['precision']:.4f} | "
                      f"{o['recall']:.4f} | {o['auc']:.4f} | {o['fpr']:.4f} |")
 
-    lines += ["", "## Fairness across skin-tone groups (ITA proxy — see caveat)", "",
+    lines += ["", "## Fairness across FairFace race groups", "",
               "| model | FPR gap | TPR gap | AUC gap | worst-group AUC |",
               "| --- | --- | --- | --- | --- |"]
     for name, g in gap_rows:
@@ -217,18 +207,9 @@ def compare(recipe: str) -> None:
                          f"{g.get('tpr_gap', float('nan')):.4f} | "
                          f"{g.get('auc_gap', float('nan')):.4f} | "
                          f"{g.get('worst_group_auc', float('nan')):.4f} |")
+    lines.append("")
 
-    lines += ["", "## How to read this", "",
-              "- **Detection**: which architecture separates real from fake best. "
-              "AUC is the fairest single measure (threshold-independent).",
-              "- **Fairness gaps**: smaller = more even across groups. Compare "
-              "architectures on whether some are inherently fairer.",
-              "- **Caveat**: skin-tone groups are ITA-derived and can conflate "
-              "hair/lighting with skin tone on in-the-wild images. Treat the "
-              "fairness columns as indicative; FairFace-based labelling is the "
-              "planned refinement.", ""]
-
-    out = ensure_dir("runs/models") / f"comparison_{recipe}.md"
+    out = ensure_dir("runs/models140k") / f"comparison_{recipe}.md"
     out.write_text("\n".join(lines), encoding="utf-8")
     print("\n".join(lines))
     log.info("Wrote %s", out)
@@ -238,19 +219,19 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--train", choices=list(MODELS), help="Train one model")
+    ap.add_argument("--eval", choices=list(MODELS), help="Evaluate one model")
     ap.add_argument("--eval-all", action="store_true", help="Evaluate all trained models")
     ap.add_argument("--compare", action="store_true", help="Build the comparison table")
     ap.add_argument("--recipe", default="baseline", help="baseline | fair")
     ap.add_argument("--device", default=None, choices=[None, "cpu", "cuda"])
     ap.add_argument("--config", default=None,
-                    help="Override the config file for this run "
-                         "(e.g. config/model140k_swin_aug.yaml)")
+                    help="use this config instead of the default one for the model(s)")
     args = ap.parse_args()
 
     if args.config:
         if not Path(args.config).exists():
             raise SystemExit(f"--config {args.config} not found")
-        targets = [args.train] if args.train else list(MODELS)
+        targets = [k for k in (args.train, args.eval) if k] or list(MODELS)
         for k in targets:
             MODELS[k] = args.config
         log.info("Config override -> %s for: %s", args.config, ", ".join(targets))
@@ -258,12 +239,14 @@ def main() -> None:
 
     if args.train:
         train_one(args.train, args.recipe, device)
+    if args.eval and not args.eval_all:
+        eval_one(args.eval, args.recipe, device)
     if args.eval_all:
         for key in MODELS:
             eval_one(key, args.recipe, device)
     if args.compare:
         compare(args.recipe)
-    if not (args.train or args.eval_all or args.compare):
+    if not (args.train or args.eval or args.eval_all or args.compare):
         ap.print_help()
 
 

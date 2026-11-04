@@ -1,34 +1,22 @@
 #!/usr/bin/env python3
-r"""Label the RAW 140k images by FairFace race and build a balanced manifest.
+r"""Label every 140k image with FairFace race, then build a balanced manifest.
 
-140k (FFHQ) images are already face-centred and aligned, so we skip face
-detection/harvesting entirely and run FairFace straight on the raw images.
-This is far faster than harvesting: one classifier pass, no cropping.
+The 140k images are already aligned, face-centred 256 x 256 crops, so FairFace
+runs on them directly with no face detection.
 
-Outputs:
-  * a manifest with race labels + splits, balanced across race x label
-  * sample folders (data\faces140k\_race_check\<race>\) with ~30 faces each,
-    for you to EYEBALL before training — the verification gate.
+Phase 1 writes data/faces140k/manifests/raw_race_labels.csv and copies a
+random sample of faces per group (seed 0) into data/faces140k/_race_check/
+for the visual check:
 
-USAGE — two phases so you can check before committing:
+    python scripts/build_140k_race.py --phase label \
+        --root data/raw/real_vs_fake/real-vs-fake \
+        --weights models/fairface/res34_fair_align_multi_7_20190809.pt
 
-  PHASE 1 (label + sample, for inspection):
-    python scripts\build_140k_race.py ^
-        --root    data\raw\real_vs_fake\real-vs-fake ^
-        --weights models\fairface\res34_fair_align_multi_7_20190809.pt ^
-        --phase label
+Phase 2 writes data/faces140k/manifests/manifest.csv, balanced over
+race x label within the dataset's own train/valid/test folders. It is only
+used for the preliminary backbone comparison:
 
-    Then OPEN data\faces140k\_race_check\<race>\ and confirm the faces in
-    each folder actually match the race label.
-
-  PHASE 2 (build the balanced manifest, after you've confirmed):
-    python scripts\build_140k_race.py ^
-        --root    data\raw\real_vs_fake\real-vs-fake ^
-        --per-group 3000 ^
-        --phase balance
-
-  Then train:
-    python scripts\run_models140k.py --train vit   (etc.)
+    python scripts/build_140k_race.py --phase balance --per-group 3000 --drop-other
 """
 from __future__ import annotations
 
@@ -75,7 +63,7 @@ LABELS_CSV = WORK / "manifests" / "raw_race_labels.csv"
 
 def load_fairface(weights: str, device: str) -> nn.Module:
     model = torchvision.models.resnet34(weights=None)
-    model.fc = nn.Linear(model.fc.in_features, 18)
+    model.fc = nn.Linear(model.fc.in_features, 18)  # 7 race + 2 gender + 9 age
     state = torch.load(weights, map_location=device, weights_only=False)
     if isinstance(state, dict) and "state_dict" in state:
         state = state["state_dict"]
@@ -151,7 +139,6 @@ def phase_label(root: Path, weights: str, device: str, sample_check: int) -> Non
     log.info("Race distribution (race7):\n%s", df["race7"].value_counts().to_string())
     log.info("SA grouping:\n%s", df["race"].value_counts().to_string())
 
-    # sample folders for manual inspection
     check = WORK / "_race_check"
     if check.exists():
         shutil.rmtree(check)
@@ -168,10 +155,7 @@ def phase_label(root: Path, weights: str, device: str, sample_check: int) -> Non
                 shutil.copy(r["path"], d / f"{j}_{Path(r['path']).name}")
             except Exception:
                 pass
-    print(f"\n>>> VERIFICATION GATE <<<")
-    print(f"Open {check}\\<race>\\ and confirm the faces match the race label.")
-    print("If they look right, run PHASE 2 (--phase balance) to build the set.")
-    print("If they look wrong, STOP — tell me and we adjust before training.")
+    log.info("Wrote %d faces per group to %s for the visual check", sample_check, check)
 
 
 def phase_balance(per_group: int, min_per_cell: int, drop_other: bool) -> None:
@@ -208,10 +192,10 @@ def phase_balance(per_group: int, min_per_cell: int, drop_other: bool) -> None:
                 kept.append(pool.iloc[rng.permutation(len(pool))[:cap]])
 
     bal = pd.concat(kept, ignore_index=True)
-    # write in the manifest shape the trainer expects: status + skin_tone(=race)
+    # the trainer groups by the skin_tone column, which holds the race label
     bal["status"] = "ok"
     bal["skin_tone_ita"] = "n/a"
-    bal["skin_tone"] = bal["race"]  # eval groups by skin_tone -> race
+    bal["skin_tone"] = bal["race"]
     out = WORK / "manifests" / "manifest.csv"
     out.parent.mkdir(parents=True, exist_ok=True)
     bal.to_csv(out, index=False)
@@ -219,8 +203,6 @@ def phase_balance(per_group: int, min_per_cell: int, drop_other: bool) -> None:
     log.info("Balanced race x label:\n%s",
              pd.crosstab(bal["race"], bal["label"]).to_string())
     log.info("Per split:\n%s", bal["split"].value_counts().to_string())
-    print(f"\nBalanced manifest -> {out}")
-    print("Now train:  python scripts\\run_models140k.py --train vit  (then xception, swin)")
 
 
 def main() -> None:
