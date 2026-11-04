@@ -52,8 +52,8 @@ INDIST_FN = {"Black": (2, 400), "Indian": (1, 400), "White": (3, 400)}   # FNR
 #   IMDb holds real faces only (false positives), SD fake faces only (misses)
 CROSS = {
     "baseline": {
-        "fp": {"Black": (620, 1457), "Indian": (109, 197), "White": (1757, 4845)},
-        "fn": {"Black": (1264, 1709), "Indian": (492, 891), "White": (7102, 11577)},
+        "fp": {"Black": (121, 1457), "Indian": (38, 197), "White": (550, 4845)},
+        "fn": {"Black": (1570, 1709), "Indian": (709, 891), "White": (9767, 11577)},
     },
     "fair": {
         "fp": {"Black": (418, 1457), "Indian": (71, 197), "White": (1424, 4845)},
@@ -61,8 +61,8 @@ CROSS = {
     },
 }
 # 95% intervals of the baseline IMDb FPR, from eval_cross/imdb/per_group_error.csv
-CROSS_FPR_CI_REPORTED = {"Black": (0.401, 0.449), "Indian": (0.482, 0.619),
-                         "White": (0.349, 0.377)}
+CROSS_FPR_CI_REPORTED = {"Black": (0.070, 0.097), "Indian": (0.137, 0.249),
+                         "White": (0.104, 0.123)}
 
 N_BOOT, SEED = 2000, 0
 
@@ -76,7 +76,7 @@ BLUE, PURPLE = "#77b2fb", "#815F9D"          # categorical slots 1 and 2
 GREY_BAR = "#c3c2b7"                         # "left out" / reference
 PURPLE_RAMP = ["#ffffff", "#e5d9f8", "#cbb5ef", "#b290e4", "#9b69da",
                "#8d5acb", "#7d4fb5", "#6e43a2", "#5f398d"]
-TINT = {"neutral": "#cea2e2"}                # correct cells in Figure 9
+TINT = {"neutral": "#f3f3f1"}                # correct cells in Figure 9
 
 WIDTH = 5.4                                  # inches, the text width of the report
 
@@ -226,15 +226,15 @@ def fig_contrast():
     # value labels on the second test only
     for xi, v, (lo, hi) in zip(x, series[1][3], series[1][4]):
         ax.text(xi + off + 0.07, v, pct(v), va="center", ha="left", fontsize=10, color=INK)
-    ax.text(x[1] - off, 0.04, r"0 to 0.5$\%$ for every group", ha="center", va="bottom",
+    ax.text(x[1] - off, 0.015, r"0 to 0.5$\%$ for every group", ha="center", va="bottom",
             fontsize=8.5, color=INK2)
 
     ax.set_xticks(x)
     ax.set_xticklabels(RACES, color=INK2, fontsize=10.5)
     ax.set_xlim(-0.6, len(RACES) - 0.4)
-    ax.set_ylim(-0.012, 0.66)
-    ax.set_yticks([0, 0.2, 0.4, 0.6])
-    ax.set_yticklabels(["0", "20%", "40%", "60%"])
+    ax.set_ylim(-0.006, 0.32)
+    ax.set_yticks([0, 0.1, 0.2, 0.3])
+    ax.set_yticklabels(["0", "10%", "20%", "30%"])
     ax.set_ylabel("False-positive rate", color=INK2, fontsize=10)
     style_axes(ax, "y")
     ax.spines["left"].set_visible(False)
