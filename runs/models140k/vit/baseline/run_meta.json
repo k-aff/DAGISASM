@@ -1,0 +1,11 @@
+{
+  "model": "vit",
+  "backbone": "vit_small_patch16_224",
+  "recipe": "baseline",
+  "groups": [
+    "Black",
+    "Indian",
+    "White"
+  ],
+  "best_selection_score": 0.9999030585041928
+}

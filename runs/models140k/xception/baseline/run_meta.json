@@ -1,0 +1,11 @@
+{
+  "model": "xception",
+  "backbone": "xception",
+  "recipe": "baseline",
+  "groups": [
+    "Black",
+    "Indian",
+    "White"
+  ],
+  "best_selection_score": 0.9939100855197991
+}

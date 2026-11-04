@@ -1,0 +1,76 @@
+# Preliminary backbone comparison (Xception), not used as evidence in the
+# report. Trained on manifest.csv from build_140k_race.py --phase balance,
+# which is balanced within the dataset's own train/valid/test folders.
+#
+#   python scripts/run_models140k.py --train xception
+
+seed: 42
+
+paths:
+  manifests: data/faces140k/manifests
+  runs: runs/models140k/xception
+
+image:
+  size: 224
+  mean: [0.5, 0.5, 0.5]
+  std:  [0.5, 0.5, 0.5]
+
+group:
+  key: skin_tone             # this column holds the FairFace race label
+  skin_tone_categories: [Black, Indian, White]
+
+model:
+  backbone: xception
+  pretrained: true
+  freq_branch: true
+  freq_dim: 128
+  embed_dim: 256
+  dropout: 0.1
+
+train:
+  epochs: 5
+  batch_size: 32
+  lr: 3.0e-5
+  weight_decay: 0.05
+  warmup_epochs: 1
+  grad_clip: 1.0
+  num_workers: 4
+  amp: false
+  balanced_sampler: false
+  early_stop_patience: 2
+  select_metric: auc
+  threshold: 0.5
+
+loss:
+  type: bce
+  dag_alpha: 0.5
+  daw_alpha_group: 0.5
+  daw_alpha_sample: 0.8
+
+adversarial:
+  enabled: false
+  weight: 0.2
+  grl_ramp_epochs: 2
+  head_hidden: 128
+
+fpr_penalty:
+  enabled: false
+  weight: 0.5
+
+recipes:
+  baseline:
+    loss.type: bce
+    train.balanced_sampler: false
+    adversarial.enabled: false
+    fpr_penalty.enabled: false
+    train.select_metric: auc
+  fair:
+    loss.type: daw_fdd
+    train.balanced_sampler: true
+    adversarial.enabled: true
+    fpr_penalty.enabled: false
+    train.select_metric: auc_minus_fprgap
+
+eval:
+  bootstrap: 100
+  min_group_size: 30

@@ -1,0 +1,245 @@
+% =====================================================================
+%  Figure 6: evaluation design (TikZ)
+%
+%  Use inside a figure environment:
+%      \begin{figure}[htbp]
+%      \centering
+%      \input{figures/fig_evaldesign.tex}
+%      \caption{...}\label{fig:evaldesign}
+%      \end{figure}
+%
+%  Needs in the preamble:
+%      \usepackage{tikz}
+%      \usetikzlibrary{positioning,fit,backgrounds,arrows.meta,calc}
+%
+%  Colours follow the poster: blue = in-distribution test,
+%  purple = cross-source/cross-generator test, navy = the trained model,
+%  teal = how a gap is judged.
+%  Counts and the example intervals are the report's numbers
+%  (baseline model, Section 6).
+%  Coordinates are scaled (x 1.1, y 1.08) to give the parts more room,
+%  so the canvas is about 15.0 cm x 12.1 cm. The picture is centred in a
+%  box of text width and reaches about 0.65 cm into each margin.
+% =====================================================================
+\definecolor{evink}{HTML}{0B0B0B}
+\definecolor{evinktwo}{HTML}{52514E}
+\definecolor{evmodel}{HTML}{112D52}  % navy: the trained model
+\definecolor{evindist}{HTML}{4A90E2} % blue: in-distribution test
+\definecolor{evcross}{HTML}{7030A0}  % purple: cross-source/cross-generator test
+\definecolor{evteal}{HTML}{2B9288}   % teal: how a gap is judged
+\definecolor{evmag}{HTML}{CC2CAA}    % magenta: the embedding
+\providecommand{\evsmall}{\fontsize{7}{8.4}\selectfont}
+\providecommand{\evnum}[1]{\mbox{$#1$}}
+%
+% \evconf{(centre)}{colour}{mode}: confusion matrix glyph
+%   mode 0 = both rows (real and fake), 1 = real row only, 2 = fake row only
+\providecommand{\evconf}[3]{%
+  \begin{scope}[shift={#1}, line width=0.35pt]
+    \node[font=\tiny, text=evinktwo, anchor=south, inner sep=1pt] at (0,0.66) {predicted};
+    \foreach \lab/\x in {real/-0.27, fake/0.27}
+      \node[font=\tiny, text=evinktwo, anchor=south, inner sep=1pt] at (\x,0.44) {\lab};
+    \node[font=\tiny, text=evinktwo, anchor=east, inner sep=1pt] at (-0.56,0.21) {real};
+    \node[font=\tiny, text=evinktwo, anchor=east, inner sep=1pt] at (-0.56,-0.21) {fake};
+    % real row: TN, FP
+    \ifnum#3=2
+      \draw[evinktwo!50, dashed, fill=white, rounded corners=1.5pt] (-0.54,0.01) rectangle (0.54,0.43);
+      \node[font=\tiny, text=evinktwo] at (0,0.22) {none};
+    \else
+      \fill[#2!18!white, rounded corners=1.5pt] (-0.54,0.01) rectangle (-0.01,0.43);
+      \fill[#2, rounded corners=1.5pt] (0.01,0.01) rectangle (0.54,0.43);
+      \node[font=\evsmall] at (-0.27,0.22) {TN};
+      \node[font=\evsmall\bfseries, text=white] at (0.27,0.22) {FP};
+    \fi
+    % fake row: FN, TP
+    \ifnum#3=1
+      \draw[evinktwo!50, dashed, fill=white, rounded corners=1.5pt] (-0.54,-0.43) rectangle (0.54,-0.01);
+      \node[font=\tiny, text=evinktwo] at (0,-0.22) {none};
+    \else
+      \fill[#2, rounded corners=1.5pt] (-0.54,-0.43) rectangle (-0.01,-0.01);
+      \fill[#2!18!white, rounded corners=1.5pt] (0.01,-0.43) rectangle (0.54,-0.01);
+      \node[font=\evsmall\bfseries, text=white] at (-0.27,-0.22) {FN};
+      \node[font=\evsmall] at (0.27,-0.22) {TP};
+    \fi
+  \end{scope}}
+%
+\begingroup\linespread{1}\selectfont   % ignore the report's line spread inside the figure
+\makebox[\textwidth][c]{%
+\begin{tikzpicture}[
+    xscale=1.1, yscale=1.08,
+    font=\scriptsize, text=evink,
+    >={Stealth[length=4pt,width=3.2pt]},
+    flow/.style={->, draw=evmodel!70, line width=0.75pt},
+    thin flow/.style={->, draw=evmodel!70, line width=0.5pt},
+    det/.style={font=\evsmall, text=evinktwo, inner sep=0pt, align=left},
+    box/.style={rounded corners=7pt, line width=0.5pt},
+    tab/.style={fill=#1, text=white, font=\scriptsize\bfseries, rounded corners=3pt,
+                inner xsep=4pt, inner ysep=2.2pt},
+    ttl/.style={tab=#1, anchor=north west},
+  ]
+  % =====================================================================
+  % panels
+  % =====================================================================
+  \fill[box, fill=black, opacity=0.13] (2.9,9.79) rectangle (10.9,11.14);
+  \fill[box, fill=evmodel] (2.85,9.85) rectangle (10.85,11.2);
+  \fill[box, fill=evindist!9] (0,3.8) rectangle (5.55,9.4);
+  \fill[box, fill=evcross!8] (5.75,3.8) rectangle (13.65,9.4);
+  \fill[box, fill=evteal!9] (0,0) rectangle (13.65,3.6);
+
+  % =====================================================================
+  % the trained detector
+  % =====================================================================
+  \begin{scope}[shift={(3.6,10.52)}, line width=0.3pt]
+    % image stream block
+    \filldraw[fill=evindist!85!black, draw=white] (-0.18,0.03) -- ++(0.14,0.1) -- ++(0,0.36) -- (-0.18,0.39) -- cycle;
+    \filldraw[fill=evindist!60!white, draw=white] (-0.54,0.39) -- ++(0.14,0.1) -- ++(0.36,0) -- (-0.18,0.39) -- cycle;
+    \filldraw[fill=evindist!30!white, draw=white] (-0.54,0.03) rectangle (-0.18,0.39);
+    % frequency stream spectrum
+    \shade[inner color=white, outer color=evcross!80!white] (-0.54,-0.47) rectangle (-0.18,-0.11);
+    \draw[white] (-0.54,-0.47) rectangle (-0.18,-0.11);
+    \draw[->, draw=white, line width=0.5pt] (-0.02,0.2) -- (0.22,0.02);
+    \draw[->, draw=white, line width=0.5pt] (-0.1,-0.29) -- (0.22,-0.1);
+    \foreach \k in {0,...,3}
+      \filldraw[fill=evmag!80!white, draw=white, line width=0.35pt]
+        (0.28+\k*0.12,-0.1) rectangle ++(0.12,0.12);
+  \end{scope}
+  \node[det, anchor=west, text width=6.3cm, text=white] at (4.45,10.52)
+    {\textbf{Trained detector} (Figure~2)\\
+     trained on FFHQ real and StyleGAN fake faces\\
+     baseline and fair model see the same test images};
+  \draw[flow] (5.2,9.85) -- (2.775,9.4);
+  \draw[flow] (8.5,9.85) -- (9.725,9.4);
+
+  % =====================================================================
+  % test 1: in-distribution
+  % =====================================================================
+  \node[ttl=evindist!85!black] at (0.15,9.28) {Test 1: in-distribution};
+  \node[det, anchor=north west] at (0.15,8.8) {held-out FFHQ real and StyleGAN fakes};
+
+  % composition: 400 images in every race x label cell
+  \node[font=\tiny, text=evinktwo] at (2.35,8.3) {real};
+  \node[font=\tiny, text=evinktwo] at (3.2,8.3) {fake};
+  \foreach \r/\yy in {Black/7.9, Indian/7.45, White/7.0}{
+    \node[font=\evsmall, anchor=east, inner sep=0pt] at (1.85,\yy) {\r};
+    \fill[evindist!30!white, rounded corners=2pt] (1.95,\yy-0.19) rectangle (2.75,\yy+0.19);
+    \fill[evindist, rounded corners=2pt] (2.8,\yy-0.19) rectangle (3.6,\yy+0.19);
+    \node[font=\evsmall] at (2.35,\yy) {400};
+    \node[font=\evsmall\bfseries, text=white] at (3.2,\yy) {400};
+  }
+  \node[det, anchor=west] at (3.8,7.45) {\evnum{2\,400} images,\\perfectly\\balanced};
+
+  % confusion matrix: both labels, so every metric is available
+  \evconf{(1.2,5.55)}{evindist}{0}
+  \node[det, anchor=north, align=center] at (1.2,4.95) {both labels\\present};
+  \node[det, anchor=west, text width=3.3cm] at (2.15,5.3)
+    {\textcolor{evink}{\textbf{All metrics}}\\
+     accuracy, precision,\\
+     recall, AUC,\\
+     FPR and FNR per race;\\
+     gaps in FPR, TPR, AUC;\\
+     worst-group AUC;\\
+     equalised-odds gap};
+
+  % =====================================================================
+  % test 2: cross-source/cross-generator
+  % =====================================================================
+  \node[ttl=evcross] at (5.9,9.28) {Test 2: cross-source/cross-generator};
+  \node[det, anchor=north west] at (5.9,8.8) {unseen sources, both from the AI-Face corpus};
+
+  % separator: the two sources are never pooled
+  \draw[evcross!60!black, dashed, line width=0.45pt] (9.72,8.35) -- (9.72,6.75);
+  \draw[evcross!60!black, dashed, line width=0.45pt] (9.72,6.05) -- (9.72,4.55);
+  \fill[evcross] (9.72,6.4) circle (0.2);
+  \draw[white, line width=0.9pt] (9.62,6.3) -- (9.82,6.5) (9.62,6.5) -- (9.82,6.3);
+
+  % ---- IMDb real faces ----------------------------------------------------
+  \node[font=\scriptsize\bfseries, anchor=north west, inner sep=0pt] at (5.9,8.45) {IMDb real faces};
+  \node[det, anchor=north west] at (5.9,8.08) {real only, \evnum{n = 6\,499}};
+  \foreach \r/\yy/\n/\len in {Black/7.38/1\,457/0.511, Indian/6.98/197/0.069, White/6.58/4\,845/1.7}{
+    \node[font=\evsmall, anchor=east, inner sep=0pt] at (6.85,\yy) {\r};
+    \fill[evcross!85!white, rounded corners=1pt] (6.95,\yy-0.12) rectangle (6.95+\len,\yy+0.12);
+    \node[font=\evsmall, anchor=west, inner sep=0pt, text=evinktwo] at (7.03+\len,\yy) {\evnum{\n}};
+  }
+  \evconf{(6.75,5.4)}{evcross}{1}
+  \node[det, anchor=west, text width=1.95cm] at (7.48,5.35)
+    {\textcolor{evink}{\textbf{FPR only}}\\
+     $\mathrm{FPR} = \frac{\mathrm{FP}}{\mathrm{FP} + \mathrm{TN}}$\\
+     real faces\\flagged as fake};
+
+  % ---- Stable Diffusion fakes ----------------------------------------------
+  \node[font=\scriptsize\bfseries, anchor=north west, inner sep=0pt] at (10.0,8.45) {Stable Diffusion fakes};
+  \node[det, anchor=north west] at (10.0,8.08) {fake only, \evnum{n = 14\,177}};
+  \foreach \r/\yy/\n/\len in {Black/7.38/1\,709/0.251, Indian/6.98/891/0.131, White/6.58/11\,577/1.7}{
+    \node[font=\evsmall, anchor=east, inner sep=0pt] at (10.95,\yy) {\r};
+    \fill[evcross!85!white, rounded corners=1pt] (11.05,\yy-0.12) rectangle (11.05+\len,\yy+0.12);
+    \node[font=\evsmall, anchor=west, inner sep=0pt, text=evinktwo] at (11.13+\len,\yy) {\evnum{\n}};
+  }
+  \evconf{(10.85,5.4)}{evcross}{2}
+  \node[det, anchor=west, text width=1.95cm] at (11.56,5.35)
+    {\textcolor{evink}{\textbf{FNR only}}\\
+     $\mathrm{FNR} = \frac{\mathrm{FN}}{\mathrm{FN} + \mathrm{TP}}$\\
+     fake faces\\that are missed};
+
+  \node[det, anchor=north, align=center] at (9.725,4.38)
+    {races are compared within each source: pooled, a model\\
+     could score well just by telling the sources apart};
+
+  % =====================================================================
+  % how a gap is judged
+  % =====================================================================
+  \node[ttl=evteal] at (0.15,3.48) {How a gap is judged};
+
+  % example: baseline, IMDb false-positive rate by race (Table 4)
+  % axis maps a rate r to x = 0.9 + (r - 0.30) / 0.35 * 6.1
+  \draw[evinktwo!60, line width=0.4pt] (0.9,1.3) -- (7.0,1.3);
+  \foreach \v/\t in {0.30/30, 0.40/40, 0.50/50, 0.60/60}{
+    \pgfmathsetmacro{\xx}{0.9+(\v-0.30)/0.35*6.1}
+    \draw[evinktwo!60, line width=0.4pt] (\xx,1.3) -- (\xx,1.22);
+    \node[font=\tiny, text=evinktwo, anchor=north, inner sep=1pt] at (\xx,1.2) {\t\%};
+  }
+  \foreach \r/\yy/\lo/\v/\hi in {White/2.7/0.349/0.363/0.377, Black/2.35/0.401/0.426/0.449, Indian/2.0/0.482/0.553/0.619}{
+    \pgfmathsetmacro{\xl}{0.9+(\lo-0.30)/0.35*6.1}
+    \pgfmathsetmacro{\xv}{0.9+(\v-0.30)/0.35*6.1}
+    \pgfmathsetmacro{\xh}{0.9+(\hi-0.30)/0.35*6.1}
+    \pgfmathtruncatemacro{\pc}{round(\v*100)}
+    \draw[evcross, line width=1.4pt, line cap=round] (\xl,\yy) -- (\xh,\yy);
+    \filldraw[fill=evcross, draw=white, line width=0.8pt] (\xv,\yy) circle (0.075);
+    \node[font=\evsmall, anchor=east, inner sep=0pt] at (\xl-0.1,\yy) {\r};
+    \node[font=\evsmall, anchor=west, inner sep=0pt, text=evinktwo] at (\xh+0.1,\yy) {\pc\%};
+  }
+  % gap bracket from the lowest to the highest group
+  \pgfmathsetmacro{\xa}{0.9+(0.363-0.30)/0.35*6.1}
+  \pgfmathsetmacro{\xb}{0.9+(0.553-0.30)/0.35*6.1}
+  \draw[evmodel, line width=0.55pt] (\xa,1.78) -- (\xa,1.68) -- (\xb,1.68) -- (\xb,1.78);
+  \node[font=\evsmall, anchor=north, inner sep=1pt] at ({(\xa+\xb)/2},1.66) {gap $= 0.553 - 0.363 = 0.19$};
+  \node[det, anchor=north west] at (0.15,0.75)
+    {example: baseline, IMDb false-positive rate. Decision rule: a gap\\
+     counts only when the highest and lowest intervals do not overlap};
+
+  % bootstrap: resampling gives the 95% interval
+  \begin{scope}[line width=0.3pt]
+    \node[font=\tiny, text=evinktwo, anchor=south] at (8.4,2.95) {test images};
+    \foreach \k in {0,...,8}{
+      \pgfmathtruncatemacro{\cc}{15+8*\k}
+      \filldraw[fill=evteal!\cc!white, draw=white, line width=0.35pt] (7.8+\k*0.13,2.62) rectangle ++(0.13,0.26);
+    }
+    \draw[thin flow] (9.08,2.75) -- (9.45,2.75);
+    \foreach \row/\yy/\seq in {1/3.0/{1,1,3,4,4,6,7,8,8}, 2/2.62/{0,2,2,3,5,5,6,8,8}, 3/2.24/{0,0,1,3,4,6,6,7,7}}{
+      \foreach \c [count=\k from 0] in \seq {
+        \pgfmathtruncatemacro{\cc}{15+8*\c}
+        \filldraw[fill=evteal!\cc!white, draw=white, line width=0.35pt] (9.55+\k*0.13,\yy) rectangle ++(0.13,0.26);
+      }
+    }
+    \node[font=\tiny, text=evinktwo, anchor=north] at (10.13,2.2) {2\,000 resamples};
+    \draw[thin flow] (10.8,2.75) -- (11.15,2.75);
+    \foreach \k/\hh in {0/0.12, 1/0.28, 2/0.5, 3/0.72, 4/0.8, 5/0.62, 6/0.4, 7/0.2, 8/0.08}
+      \filldraw[fill=evteal!80!white, draw=white, line width=0.4pt] (11.25+\k*0.15,2.35) rectangle ++(0.15,\hh);
+    \draw[evinktwo, line width=0.45pt] (11.4,2.25) -- (11.4,2.17) -- (12.45,2.17) -- (12.45,2.25);
+    \node[font=\tiny, text=evinktwo, anchor=north] at (11.93,2.13) {95\% interval};
+  \end{scope}
+  \node[det, anchor=north west] at (7.6,1.62)
+    {every rate gets a 95\% interval from 2\,000\\
+     bootstrap resamples, and each gap is recomputed\\
+     in every resample; small groups, such as Indian\\
+     faces in IMDb (\evnum{n = 197}), get wide intervals};
+\end{tikzpicture}}%
+\endgroup
