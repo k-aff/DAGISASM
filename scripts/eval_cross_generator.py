@@ -200,7 +200,8 @@ def main() -> None:
         combined_parts.append(scored)
 
         sdir = ensure_dir(out_root / src)
-        scored.to_csv(sdir / "scores.csv", index=False)
+        # the identity column is only used for the cap and the counts, so it is not saved
+        scored.drop(columns="identity").to_csv(sdir / "scores.csv", index=False)
 
         tbl = error_rate_table(scored, "skin_tone", threshold, args.n_boot, args.seed)
         tbl.to_csv(sdir / "per_group_error.csv", index=False)
@@ -227,7 +228,7 @@ def main() -> None:
         if comb["label"].nunique() >= 2:
             cdir = ensure_dir(out_root / "combined")
             generate_report(
-                comb, cdir, group_cols=["skin_tone"], threshold=threshold,
+                comb.drop(columns="identity"), cdir, group_cols=["skin_tone"], threshold=threshold,
                 min_group_size=30, n_boot=args.n_boot, seed=args.seed,
                 title="Cross-source/cross-generator test, both sources pooled",
             )
