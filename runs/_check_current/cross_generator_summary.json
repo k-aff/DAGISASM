@@ -1,0 +1,79 @@
+{
+  "checkpoint": "runs\\models140k\\swin_aug\\baseline\\best.pt",
+  "threshold": 0.5,
+  "group_col": "race",
+  "within_source": {
+    "imdb": {
+      "n": 300,
+      "n_identities": 269,
+      "metric": "FPR",
+      "overall_rate": 0.39666666666666667,
+      "per_group": [
+        {
+          "group": "Black",
+          "n": 64,
+          "n_identities": 60,
+          "metric": "FPR",
+          "rate": 0.421875,
+          "ci_lo": 0.328125,
+          "ci_hi": 0.515625
+        },
+        {
+          "group": "Indian",
+          "n": 10,
+          "n_identities": 10,
+          "metric": "FPR",
+          "rate": 0.4,
+          "ci_lo": 0.2,
+          "ci_hi": 0.7
+        },
+        {
+          "group": "White",
+          "n": 226,
+          "n_identities": 207,
+          "metric": "FPR",
+          "rate": 0.3893805309734513,
+          "ci_lo": 0.3206858407079646,
+          "ci_hi": 0.4492256637168141
+        }
+      ],
+      "gap": 0.03249446902654868
+    },
+    "sd_wiki": {
+      "n": 300,
+      "n_identities": 300,
+      "metric": "FNR",
+      "overall_rate": 0.6266666666666667,
+      "per_group": [
+        {
+          "group": "Black",
+          "n": 33,
+          "n_identities": 33,
+          "metric": "FNR",
+          "rate": 0.7272727272727273,
+          "ci_lo": 0.6363636363636364,
+          "ci_hi": 0.8787878787878788
+        },
+        {
+          "group": "Indian",
+          "n": 17,
+          "n_identities": 17,
+          "metric": "FNR",
+          "rate": 0.6470588235294118,
+          "ci_lo": 0.43970588235294117,
+          "ci_hi": 0.8544117647058819
+        },
+        {
+          "group": "White",
+          "n": 250,
+          "n_identities": 250,
+          "metric": "FNR",
+          "rate": 0.612,
+          "ci_lo": 0.5558000000000001,
+          "ci_hi": 0.6661
+        }
+      ],
+      "gap": 0.1152727272727273
+    }
+  }
+}
