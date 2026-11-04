@@ -119,12 +119,7 @@ Both models use seed 42 and train for at most 4 epochs, with early stopping afte
 
 To train with another seed, copy the config, change `seed`, **and change `paths.runs`**. Otherwise the new run overwrites the reported checkpoints.
 
-Training is deterministic on the same machine and software. After the original baseline checkpoint was overwritten by an unfinished extra-seed run, the baseline was retrained with this config, and every epoch reproduced the saved `history.json` exactly. `scripts/compare_runs.py` checks this kind of match for a history or a `scores.csv` file:
-
-```
-python scripts/compare_runs.py history NEW/history.json OLD/history.json
-python scripts/compare_runs.py scores  NEW/eval/scores.csv OLD/eval/scores.csv
-```
+Training is deterministic on the same machine and software. After the original baseline checkpoint was overwritten by an unfinished extra-seed run, the baseline was retrained with this config, and every epoch reproduced the saved `history.json` exactly.
 
 ### 5. In-distribution test
 
